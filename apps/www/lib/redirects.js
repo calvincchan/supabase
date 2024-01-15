@@ -2338,4 +2338,14 @@ module.exports = [
     source: '/docs/guides/functions/troubleshooting',
     destination: '/docs/guides/functions/debugging',
   },
+  {
+    permanent: true,
+    source: '/docs/guides/auth/auth-magic-link',
+    destination: '/docs/guides/auth/passwordless-login/auth-magic-link',
+  },
+  {
+    permanent: true,
+    source: '/docs/reference/dart/sign-in-with-apple',
+    destination: '/docs/reference/dart/sign-in-with-id-token',
+  },
 ]
