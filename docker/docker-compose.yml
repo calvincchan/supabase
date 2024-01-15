@@ -133,6 +133,9 @@ services:
       GOTRUE_EXTERNAL_PHONE_ENABLED: ${ENABLE_PHONE_SIGNUP}
       GOTRUE_SMS_AUTOCONFIRM: ${ENABLE_PHONE_AUTOCONFIRM}
 
+      GOTRUE_SAML_ENABLED: ${GOTRUE_SAML_ENABLED}
+      GOTRUE_SAML_PRIVATE_KEY: ${GOTRUE_SAML_PRIVATE_KEY}
+
   rest:
     container_name: supabase-rest
     image: postgrest/postgrest:v11.2.0
