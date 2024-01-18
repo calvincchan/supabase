@@ -413,3 +413,14 @@ services:
       - ${DOCKER_SOCKET_LOCATION}:/var/run/docker.sock:ro
 
     command: [ "--config", "etc/vector/vector.yml" ]
+
+  dbmate:
+    container_name: supabase-dbmate
+    image: amacneil/dbmate:2.11
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}?sslmode=disable
+    volumes:
+      - ./volumes/db/migrations:/db/migrations
