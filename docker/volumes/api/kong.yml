@@ -83,6 +83,17 @@ services:
         strip_path: true
         paths:
         - /auth/v1/sso/saml/metadata
+        - /sso/saml/metadata
+    plugins:
+      - name: cors
+  - name: auth-v1-open-sso-slo
+    url: "http://auth:9999/sso/saml/slo"
+    routes:
+      - name: auth-v1-open-sso-slo
+        strip_path: true
+        paths:
+        - /auth/v1/sso/saml/slo
+        - /sso/saml/slo
     plugins:
       - name: cors
 
