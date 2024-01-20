@@ -445,6 +445,49 @@ $$;
 
 
 --
+-- Name: team_member_i_u_from_sso(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.team_member_i_u_from_sso() RETURNS trigger
+    LANGUAGE plpgsql SECURITY DEFINER
+    AS $$
+DECLARE
+    new_name text;
+    new_role character(1);
+BEGIN
+    IF NEW.is_sso_user = TRUE THEN
+        -- The first sso user will be a manager
+        IF NOT EXISTS (SELECT 1 FROM public.team_member LIMIT 1) THEN
+            INSERT INTO public.team_member(id, name, email, role, last_sign_in_at)
+            VALUES (NEW.id, '(new sso user)', NEW.email, 'A', NEW.last_sign_in_at);
+        ELSE
+            -- Check if the user is already a team member
+            IF EXISTS (SELECT 1 FROM public.team_member WHERE email = NEW.email) THEN
+                -- Update the last_sign_in_at
+                UPDATE public.team_member
+                SET last_sign_in_at = NEW.last_sign_in_at
+                WHERE email = NEW.email;
+            ELSE
+                -- Check if the user is invited
+                IF EXISTS (SELECT 1 FROM public.pending_member WHERE id = NEW.email) THEN
+                    -- Insert the user into team_member and update the invite status
+                    SELECT name, role INTO new_name, new_role FROM public.pending_member WHERE id = NEW.email;
+                    INSERT INTO public.team_member(id, name, email, role, last_sign_in_at)
+                    VALUES (NEW.id, new_name, NEW.email, new_role, NEW.last_sign_in_at);
+                    UPDATE public.pending_member SET activated_at = NOW() WHERE id = NEW.email;
+                ELSE
+                    -- throw error
+                    RAISE EXCEPTION 'SSO user % is not invited', NEW.email;
+                END IF;
+            END IF;
+        END IF;
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+
+--
 -- Name: trigger_on_session_status(); Type: FUNCTION; Schema: public; Owner: -
 --
 
@@ -888,6 +931,19 @@ CREATE VIEW public.case_oplog AS
 
 
 --
+-- Name: invited_member; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.invited_member (
+    email text NOT NULL,
+    name text NOT NULL,
+    role character(1) DEFAULT 'B'::bpchar,
+    invited_at timestamp with time zone DEFAULT now() NOT NULL,
+    consumed_at timestamp with time zone
+);
+
+
+--
 -- Name: my_case; Type: VIEW; Schema: public; Owner: -
 --
 
@@ -920,6 +976,19 @@ CREATE VIEW public.my_case AS
    FROM (public."case" a
      JOIN public.case_handler b ON ((a.id = b.case_id)))
   WHERE (b.user_id = auth.uid());
+
+
+--
+-- Name: pending_member; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.pending_member (
+    id text NOT NULL,
+    name text NOT NULL,
+    role character(1) DEFAULT 'B'::bpchar,
+    invited_at timestamp with time zone DEFAULT now() NOT NULL,
+    activated_at timestamp with time zone
+);
 
 
 --
@@ -1057,6 +1126,22 @@ ALTER TABLE ONLY public.case_handler
 
 ALTER TABLE ONLY public."case"
     ADD CONSTRAINT case_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: invited_member invited_member_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.invited_member
+    ADD CONSTRAINT invited_member_pkey PRIMARY KEY (email);
+
+
+--
+-- Name: pending_member pending_member_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.pending_member
+    ADD CONSTRAINT pending_member_pkey PRIMARY KEY (id);
 
 
 --
@@ -1621,6 +1706,20 @@ CREATE POLICY "Enable all operations for authenticated users" ON public.target T
 
 
 --
+-- Name: invited_member Enable all operations for managers; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY "Enable all operations for managers" ON public.invited_member TO authenticated USING (public.is_manager()) WITH CHECK (true);
+
+
+--
+-- Name: pending_member Enable all operations for managers; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY "Enable all operations for managers" ON public.pending_member TO authenticated USING (public.is_manager()) WITH CHECK (true);
+
+
+--
 -- Name: progress_note Enable delete for creator and managers; Type: POLICY; Schema: public; Owner: -
 --
 
@@ -1766,6 +1865,18 @@ ALTER TABLE public."case" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.case_handler ENABLE ROW LEVEL SECURITY;
 
 --
+-- Name: invited_member; Type: ROW SECURITY; Schema: public; Owner: -
+--
+
+ALTER TABLE public.invited_member ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: pending_member; Type: ROW SECURITY; Schema: public; Owner: -
+--
+
+ALTER TABLE public.pending_member ENABLE ROW LEVEL SECURITY;
+
+--
 -- Name: profile; Type: ROW SECURITY; Schema: public; Owner: -
 --
 
@@ -1812,4 +1923,5 @@ ALTER TABLE public.team_member ENABLE ROW LEVEL SECURITY;
 
 INSERT INTO dbmate.schema_migrations (version) VALUES
     ('20240118032322'),
-    ('20240118184903');
+    ('20240118184903'),
+    ('20240118194244');
