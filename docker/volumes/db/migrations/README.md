@@ -7,3 +7,6 @@
 
 - Migration up:
 `docker-compose run --rm dbmate up`
+
+- Status
+`docker-compose run --rm dbmate status`
