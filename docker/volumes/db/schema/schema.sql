@@ -931,19 +931,6 @@ CREATE VIEW public.case_oplog AS
 
 
 --
--- Name: invited_member; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.invited_member (
-    email text NOT NULL,
-    name text NOT NULL,
-    role character(1) DEFAULT 'B'::bpchar,
-    invited_at timestamp with time zone DEFAULT now() NOT NULL,
-    consumed_at timestamp with time zone
-);
-
-
---
 -- Name: my_case; Type: VIEW; Schema: public; Owner: -
 --
 
@@ -1010,6 +997,21 @@ CREATE TABLE public.profile (
 --
 
 COMMENT ON TABLE public.profile IS 'Additional data about a student.';
+
+
+--
+-- Name: progress_note_attachment; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.progress_note_attachment (
+    id uuid NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    case_id bigint NOT NULL,
+    note_id bigint NOT NULL,
+    name text NOT NULL,
+    size bigint NOT NULL,
+    type text NOT NULL
+);
 
 
 --
@@ -1129,14 +1131,6 @@ ALTER TABLE ONLY public."case"
 
 
 --
--- Name: invited_member invited_member_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.invited_member
-    ADD CONSTRAINT invited_member_pkey PRIMARY KEY (email);
-
-
---
 -- Name: pending_member pending_member_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1150,6 +1144,14 @@ ALTER TABLE ONLY public.pending_member
 
 ALTER TABLE ONLY public.profile
     ADD CONSTRAINT profile_pkey PRIMARY KEY (case_id);
+
+
+--
+-- Name: progress_note_attachment progress_note_attachment_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.progress_note_attachment
+    ADD CONSTRAINT progress_note_attachment_pkey PRIMARY KEY (id);
 
 
 --
@@ -1536,6 +1538,22 @@ ALTER TABLE ONLY public.profile
 
 
 --
+-- Name: progress_note_attachment progress_note_attachment_case_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.progress_note_attachment
+    ADD CONSTRAINT progress_note_attachment_case_id_fkey FOREIGN KEY (case_id) REFERENCES public."case"(id) ON UPDATE RESTRICT ON DELETE CASCADE;
+
+
+--
+-- Name: progress_note_attachment progress_note_attachment_note_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.progress_note_attachment
+    ADD CONSTRAINT progress_note_attachment_note_id_fkey FOREIGN KEY (note_id) REFERENCES public.progress_note(id) ON UPDATE RESTRICT ON DELETE CASCADE;
+
+
+--
 -- Name: progress_note progress_note_case_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1699,17 +1717,17 @@ CREATE POLICY "Enable all operations for all users" ON public.profile TO authent
 
 
 --
+-- Name: progress_note_attachment Enable all operations for authenticated users; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY "Enable all operations for authenticated users" ON public.progress_note_attachment TO authenticated USING (true) WITH CHECK (true);
+
+
+--
 -- Name: target Enable all operations for authenticated users; Type: POLICY; Schema: public; Owner: -
 --
 
 CREATE POLICY "Enable all operations for authenticated users" ON public.target TO authenticated USING (true) WITH CHECK (true);
-
-
---
--- Name: invited_member Enable all operations for managers; Type: POLICY; Schema: public; Owner: -
---
-
-CREATE POLICY "Enable all operations for managers" ON public.invited_member TO authenticated USING (public.is_manager()) WITH CHECK (true);
 
 
 --
@@ -1865,12 +1883,6 @@ ALTER TABLE public."case" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.case_handler ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: invited_member; Type: ROW SECURITY; Schema: public; Owner: -
---
-
-ALTER TABLE public.invited_member ENABLE ROW LEVEL SECURITY;
-
---
 -- Name: pending_member; Type: ROW SECURITY; Schema: public; Owner: -
 --
 
@@ -1924,4 +1936,5 @@ ALTER TABLE public.team_member ENABLE ROW LEVEL SECURITY;
 INSERT INTO dbmate.schema_migrations (version) VALUES
     ('20240118032322'),
     ('20240118184903'),
-    ('20240118194244');
+    ('20240118194244'),
+    ('20240123030116');
