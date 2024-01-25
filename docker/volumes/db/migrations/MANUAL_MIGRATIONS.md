@@ -18,3 +18,12 @@ There are some operations that requires manual clicking in the studio interface.
 1. Enable realtime to the table `progress_note_attachment`.
 2. Add bucket `progress_note_attachment_bucket`.
 3. Add policy "All access to authenticated users", allow INSERT-UPDATE-DELETE-SELECT, target role "Authenticated".
+4. Add the snippet below to the `server` block of file `/etc/nginx/sites-enabled/lst`:
+  ```
+     # STORAGE
+    location ~ ^/storage/v1/(.*)$ {
+        proxy_set_header Host $host;
+        proxy_pass http://kong;
+        proxy_redirect off;
+    }
+  ```
