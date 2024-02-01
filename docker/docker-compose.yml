@@ -406,17 +406,3 @@ services:
       - ${DOCKER_SOCKET_LOCATION}:/var/run/docker.sock:ro
 
     command: [ "--config", "etc/vector/vector.yml" ]
-
-  dbmate:
-    container_name: supabase-dbmate
-    image: amacneil/dbmate:2.11
-    depends_on:
-      db:
-        condition: service_healthy
-    environment:
-      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}?sslmode=disable&search_path=dbmate,public,audit
-      DBMATE_MIGRATIONS_DIR: /db/migrations
-      DBMATE_SCHEMA_FILE: /db/schema/schema.sql
-    volumes:
-      - ./volumes/db/migrations:/db/migrations
-      - ./volumes/db/schema:/db/schema
