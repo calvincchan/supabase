@@ -1,0 +1,64 @@
+# Common Actions
+
+### Fetch latest code from upstream and merge to local main branch
+
+`./scripts/upstream.sh`
+
+### Create migration script:
+
+First, add `POSTGRES_DUMP_SCHEMAS=public,audit,supabase_migrations` to .env file
+
+`./scripts/dump.sh`
+
+`./scripts/diff.sh <script_name>`
+
+### Apply migration scripts:
+
+`./scripts/up.sh`
+
+### If the database is already patched but you want to update the migration timestamp:
+
+1. Mark as applied
+   `./scripts/repair.sh <script_timestamp> applied`
+
+2. Mark is reverted
+   `./scripts/repair.sh <script_timestamp> reverted`
+
+### Clear the database
+
+`rm -rf volumes/db/data`
+
+# Manual actions
+
+### 20240201204039_lris_init
+
+1. Enable realtime to the following tables in `public`: `case`, `progress_note`, `reminder`, `session`, `target`.
+2. Enable RLS to all tables.
+
+### 20240201214818_audit_log
+
+1. Enable RLS to `Audit.record_version`.
+
+### 20240201221159_sso
+
+1. Enable RLS to `pending_member` table.
+
+### 20240201223425_progress_note_attachment
+
+1. Enable realtime to the table `progress_note_attachment`.
+2. Add bucket `progress_note_attachment_bucket`.
+3. Add policy "All access to authenticated users", allow INSERT-UPDATE-DELETE-SELECT, target role "Authenticated".
+4. Add the snippet below to the `server` block of file `/etc/nginx/sites-enabled/lst`:
+
+```
+   # STORAGE
+  location ~ ^/storage/v1/(.*)$ {
+      proxy_set_header Host $host;
+      proxy_pass http://kong;
+      proxy_redirect off;
+  }
+```
+
+### 20240201224445_case_custom_columns
+
+Nothing to do.
