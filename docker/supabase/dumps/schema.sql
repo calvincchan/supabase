@@ -644,6 +644,11 @@ CREATE TABLE IF NOT EXISTS "public"."case" (
     "father_phone" "text",
     "father_email" "text",
     "handlers" "text" DEFAULT ''::"text" NOT NULL,
+    "custom_1" "text",
+    "custom_2" "text",
+    "custom_3" "text",
+    "custom_4" "text",
+    "custom_5" "text",
     CONSTRAINT "case_case_status_check" CHECK (("case_status" = ANY (ARRAY['I'::"bpchar", 'C'::"bpchar", 'N'::"bpchar", 'A'::"bpchar", 'R'::"bpchar", 'X'::"bpchar"])))
 );
 
@@ -1156,6 +1161,8 @@ ALTER TABLE "public"."profile" ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE "public"."progress_note" ENABLE ROW LEVEL SECURITY;
 
+ALTER TABLE "public"."progress_note_attachment" ENABLE ROW LEVEL SECURITY;
+
 ALTER TABLE "public"."reminder" ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE "public"."session" ENABLE ROW LEVEL SECURITY;
@@ -1387,6 +1394,16 @@ GRANT ALL ON FUNCTION "extensions"."uuid_ns_x500"() TO "dashboard_user";
 REVOKE ALL ON FUNCTION "extensions"."verify"("token" "text", "secret" "text", "algorithm" "text") FROM "postgres";
 GRANT ALL ON FUNCTION "extensions"."verify"("token" "text", "secret" "text", "algorithm" "text") TO "postgres" WITH GRANT OPTION;
 GRANT ALL ON FUNCTION "extensions"."verify"("token" "text", "secret" "text", "algorithm" "text") TO "dashboard_user";
+
+GRANT ALL ON FUNCTION "graphql"."comment_directive"("comment_" "text") TO "postgres";
+GRANT ALL ON FUNCTION "graphql"."comment_directive"("comment_" "text") TO "anon";
+GRANT ALL ON FUNCTION "graphql"."comment_directive"("comment_" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "graphql"."comment_directive"("comment_" "text") TO "service_role";
+
+GRANT ALL ON FUNCTION "graphql"."exception"("message" "text") TO "postgres";
+GRANT ALL ON FUNCTION "graphql"."exception"("message" "text") TO "anon";
+GRANT ALL ON FUNCTION "graphql"."exception"("message" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "graphql"."exception"("message" "text") TO "service_role";
 
 GRANT ALL ON FUNCTION "graphql_public"."graphql"("operationName" "text", "query" "text", "variables" "jsonb", "extensions" "jsonb") TO "postgres";
 GRANT ALL ON FUNCTION "graphql_public"."graphql"("operationName" "text", "query" "text", "variables" "jsonb", "extensions" "jsonb") TO "anon";

@@ -42,6 +42,7 @@ First, add `POSTGRES_DUMP_SCHEMAS=public,audit,supabase_migrations` to .env file
 ### 20240201221159_sso
 
 1. Enable RLS to `pending_member` table.
+2. Run the HTTP requests in sso.http to add Id Providers.
 
 ### 20240201223425_progress_note_attachment
 
