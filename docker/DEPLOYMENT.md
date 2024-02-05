@@ -6,8 +6,6 @@
 
 ### Create migration script:
 
-First, add `POSTGRES_DUMP_SCHEMAS=public,audit,supabase_migrations` to .env file
-
 `./scripts/dump.sh`
 
 `./scripts/diff.sh <script_name>`
