@@ -1,11 +1,14 @@
-alter table "public"."case" add column "custom_1" text;
+ALTER TABLE "public"."case"
+ADD COLUMN "custom_1" TEXT;
 
-alter table "public"."case" add column "custom_2" text;
+ALTER TABLE "public"."case"
+ADD COLUMN "custom_2" TEXT;
 
-alter table "public"."case" add column "custom_3" text;
+ALTER TABLE "public"."case"
+ADD COLUMN "custom_3" TEXT;
 
-alter table "public"."case" add column "custom_4" text;
+ALTER TABLE "public"."case"
+ADD COLUMN "custom_4" TEXT;
 
-alter table "public"."case" add column "custom_5" text;
-
-
+ALTER TABLE "public"."case"
+ADD COLUMN "custom_5" TEXT;

@@ -1,26 +1,26 @@
-create table "public"."pending_member" (
-    "id" text not null,
-    "name" text not null,
-    "role" character(1) default 'B'::bpchar,
-    "invited_at" timestamp with time zone not null default now(),
-    "activated_at" timestamp with time zone
-);
+CREATE TABLE
+  "public"."pending_member" (
+    "id" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "role" CHARACTER(1) DEFAULT 'B'::bpchar,
+    "invited_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    "activated_at" TIMESTAMP WITH TIME ZONE
+  );
 
 ALTER TABLE "public"."pending_member" OWNER TO "postgres";
 
-alter table "public"."pending_member" enable row level security;
+ALTER TABLE "public"."pending_member" ENABLE ROW LEVEL SECURITY;
 
 CREATE UNIQUE INDEX pending_member_pkey ON public.pending_member USING btree (id);
 
-alter table "public"."pending_member" add constraint "pending_member_pkey" PRIMARY KEY using index "pending_member_pkey";
+ALTER TABLE "public"."pending_member"
+ADD CONSTRAINT "pending_member_pkey" PRIMARY KEY USING INDEX "pending_member_pkey";
 
-set check_function_bodies = off;
+SET
+  check_function_bodies = OFF;
 
-CREATE OR REPLACE FUNCTION public.team_member_i_u_from_sso()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
-AS $function$
+CREATE
+OR REPLACE FUNCTION public.team_member_i_u_from_sso () RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER AS $function$
 DECLARE
     new_name text;
     new_role character(1);
@@ -54,75 +54,87 @@ BEGIN
     END IF;
     RETURN NEW;
 END;
-$function$
-;
+$function$;
 
-grant delete on table "public"."pending_member" to "anon";
+GRANT DELETE ON TABLE "public"."pending_member" TO "anon";
 
-grant insert on table "public"."pending_member" to "anon";
+GRANT INSERT ON TABLE "public"."pending_member" TO "anon";
 
-grant references on table "public"."pending_member" to "anon";
+GRANT REFERENCES ON TABLE "public"."pending_member" TO "anon";
 
-grant select on table "public"."pending_member" to "anon";
+GRANT
+SELECT
+  ON TABLE "public"."pending_member" TO "anon";
 
-grant trigger on table "public"."pending_member" to "anon";
+GRANT TRIGGER ON TABLE "public"."pending_member" TO "anon";
 
-grant truncate on table "public"."pending_member" to "anon";
+GRANT
+TRUNCATE ON TABLE "public"."pending_member" TO "anon";
 
-grant update on table "public"."pending_member" to "anon";
+GRANT
+UPDATE ON TABLE "public"."pending_member" TO "anon";
 
-grant delete on table "public"."pending_member" to "authenticated";
+GRANT DELETE ON TABLE "public"."pending_member" TO "authenticated";
 
-grant insert on table "public"."pending_member" to "authenticated";
+GRANT INSERT ON TABLE "public"."pending_member" TO "authenticated";
 
-grant references on table "public"."pending_member" to "authenticated";
+GRANT REFERENCES ON TABLE "public"."pending_member" TO "authenticated";
 
-grant select on table "public"."pending_member" to "authenticated";
+GRANT
+SELECT
+  ON TABLE "public"."pending_member" TO "authenticated";
 
-grant trigger on table "public"."pending_member" to "authenticated";
+GRANT TRIGGER ON TABLE "public"."pending_member" TO "authenticated";
 
-grant truncate on table "public"."pending_member" to "authenticated";
+GRANT
+TRUNCATE ON TABLE "public"."pending_member" TO "authenticated";
 
-grant update on table "public"."pending_member" to "authenticated";
+GRANT
+UPDATE ON TABLE "public"."pending_member" TO "authenticated";
 
-grant delete on table "public"."pending_member" to "postgres";
+GRANT DELETE ON TABLE "public"."pending_member" TO "postgres";
 
-grant insert on table "public"."pending_member" to "postgres";
+GRANT INSERT ON TABLE "public"."pending_member" TO "postgres";
 
-grant references on table "public"."pending_member" to "postgres";
+GRANT REFERENCES ON TABLE "public"."pending_member" TO "postgres";
 
-grant select on table "public"."pending_member" to "postgres";
+GRANT
+SELECT
+  ON TABLE "public"."pending_member" TO "postgres";
 
-grant trigger on table "public"."pending_member" to "postgres";
+GRANT TRIGGER ON TABLE "public"."pending_member" TO "postgres";
 
-grant truncate on table "public"."pending_member" to "postgres";
+GRANT
+TRUNCATE ON TABLE "public"."pending_member" TO "postgres";
 
-grant update on table "public"."pending_member" to "postgres";
+GRANT
+UPDATE ON TABLE "public"."pending_member" TO "postgres";
 
-grant delete on table "public"."pending_member" to "service_role";
+GRANT DELETE ON TABLE "public"."pending_member" TO "service_role";
 
-grant insert on table "public"."pending_member" to "service_role";
+GRANT INSERT ON TABLE "public"."pending_member" TO "service_role";
 
-grant references on table "public"."pending_member" to "service_role";
+GRANT REFERENCES ON TABLE "public"."pending_member" TO "service_role";
 
-grant select on table "public"."pending_member" to "service_role";
+GRANT
+SELECT
+  ON TABLE "public"."pending_member" TO "service_role";
 
-grant trigger on table "public"."pending_member" to "service_role";
+GRANT TRIGGER ON TABLE "public"."pending_member" TO "service_role";
 
-grant truncate on table "public"."pending_member" to "service_role";
+GRANT
+TRUNCATE ON TABLE "public"."pending_member" TO "service_role";
 
-grant update on table "public"."pending_member" to "service_role";
+GRANT
+UPDATE ON TABLE "public"."pending_member" TO "service_role";
 
-create policy "Enable all operations for managers"
-on "public"."pending_member"
-as permissive
-for all
-to authenticated
-using (is_manager())
-with check (true);
+CREATE POLICY "Enable all operations for managers" ON "public"."pending_member" AS permissive FOR ALL TO authenticated USING (is_manager ())
+WITH
+  CHECK (TRUE);
 
 -- Create triggers on auth.users
 CREATE TRIGGER users_i_u
-AFTER INSERT OR UPDATE ON auth.users
-FOR EACH ROW
-EXECUTE FUNCTION public.team_member_i_u_from_sso();
+AFTER INSERT
+OR
+UPDATE ON auth.users FOR EACH ROW
+EXECUTE FUNCTION public.team_member_i_u_from_sso ();
