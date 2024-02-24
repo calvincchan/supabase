@@ -1,7 +1,5 @@
 CREATE SCHEMA IF NOT EXISTS "audit";
 
-ALTER SCHEMA "audit" OWNER TO "postgres";
-
 CREATE TYPE "audit"."operation" AS ENUM('INSERT', 'UPDATE', 'DELETE', 'TRUNCATE');
 
 CREATE SEQUENCE "audit"."record_version_id_seq";
@@ -120,9 +118,6 @@ ADD CONSTRAINT "record_version_check4" CHECK (
 ) NOT VALID;
 
 ALTER TABLE "audit"."record_version" VALIDATE CONSTRAINT "record_version_check4";
-
-SET
-  check_function_bodies = OFF;
 
 CREATE
 OR REPLACE FUNCTION audit.disable_tracking (regclass) RETURNS void LANGUAGE plpgsql SECURITY DEFINER
@@ -283,6 +278,36 @@ CREATE POLICY "Insert only" ON "audit"."record_version" AS permissive FOR ALL TO
 WITH
   CHECK (FALSE);
 
+-- Create triggers on auth.users
+CREATE TRIGGER users_i_u
+AFTER INSERT
+OR
+UPDATE ON auth.users FOR EACH ROW
+EXECUTE FUNCTION public.team_member_i_u_from_sso ();
+
+-- CREATE audit related views at last
+CREATE OR REPLACE VIEW
+  "public"."page_oplog" AS
+SELECT
+  rv.id,
+  rv.record_id,
+  rv.old_record_id,
+  rv.op,
+  rv.ts,
+  rv.record,
+  rv.old_record,
+  rv.auth_uid,
+  rv.auth_role,
+  tm.name AS actor,
+  rv.table_name
+FROM
+  (
+    audit.record_version rv
+    LEFT JOIN team_member tm ON ((rv.auth_uid = tm.id))
+  )
+WHERE
+  (rv.table_oid = ('page'::regclass)::oid);
+
 CREATE OR REPLACE VIEW
   "public"."case_oplog" AS
 SELECT
@@ -366,12 +391,12 @@ CREATE TRIGGER audit_i_u_d
 AFTER INSERT
 OR DELETE
 OR
-UPDATE ON public.profile FOR EACH ROW
+UPDATE ON public.page FOR EACH ROW
 EXECUTE FUNCTION audit.insert_update_delete_trigger ();
 
 CREATE TRIGGER audit_t
 AFTER
-TRUNCATE ON public.profile FOR EACH STATEMENT
+TRUNCATE ON public.page FOR EACH STATEMENT
 EXECUTE FUNCTION audit.truncate_trigger ();
 
 CREATE TRIGGER audit_i_u_d
