@@ -1,3 +1,12 @@
+# Installation: supabase cli
+
+```sh
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+brew update
+brew install gcc
+brew install supabase/tap/supabase
+```
+
 # Common Actions
 
 ### Fetch latest code from upstream and merge to local main branch
