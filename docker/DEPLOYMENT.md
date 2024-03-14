@@ -70,3 +70,7 @@ brew install supabase/tap/supabase
 ### 20240201224445_case_custom_columns
 
 Nothing to do.
+
+### 20240314060710_safeguarding_note.sql
+
+1. Enable realtime to table `safeguarding_note`.
