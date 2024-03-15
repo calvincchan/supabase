@@ -2,24 +2,16 @@ import * as Tooltip from '@radix-ui/react-tooltip'
 import type { PostgresTable } from '@supabase/postgres-meta'
 import { PermissionAction } from '@supabase/shared-types/out/constants'
 import { useParams } from 'common'
-import { MousePointer2 } from 'lucide-react'
+import { Lock, MousePointer2, PlusCircle } from 'lucide-react'
 import Link from 'next/link'
 import { useState } from 'react'
 import toast from 'react-hot-toast'
-import {
-  Button,
-  IconLock,
-  IconPlusCircle,
-  Modal,
-  PopoverContent_Shadcn_,
-  PopoverTrigger_Shadcn_,
-  Popover_Shadcn_,
-} from 'ui'
+import { Button, Modal, PopoverContent_Shadcn_, PopoverTrigger_Shadcn_, Popover_Shadcn_ } from 'ui'
 
 import { useProjectContext } from 'components/layouts/ProjectLayout/ProjectContext'
 import APIDocsButton from 'components/ui/APIDocsButton'
-import ConfirmationModal from 'components/ui/ConfirmationModal'
-import ConfirmModal from 'components/ui/Dialogs/ConfirmDialog'
+import ConfirmationModal from 'ui-patterns/Dialogs/ConfirmationModal'
+import ConfirmModal from 'ui-patterns/Dialogs/ConfirmDialog'
 import { useDatabasePoliciesQuery } from 'data/database-policies/database-policies-query'
 import { useDatabasePublicationsQuery } from 'data/database-publications/database-publications-query'
 import { useDatabasePublicationUpdateMutation } from 'data/database-publications/database-publications-update-mutation'
@@ -128,7 +120,7 @@ const GridHeaderActions = ({ table, isViewSelected, isTableSelected }: GridHeade
 
   return (
     <>
-      <div className="flex items-center space-x-3">
+      <div className="flex items-center gap-2">
         {isReadOnly && (
           <Tooltip.Root delayDuration={0}>
             <Tooltip.Trigger className="w-full">
@@ -156,19 +148,23 @@ const GridHeaderActions = ({ table, isViewSelected, isTableSelected }: GridHeade
 
         {isTableSelected ? (
           table.rls_enabled ? (
-            <div className="flex items-center gap-1">
+            <>
               {policies.length < 1 ? (
                 <Tooltip.Root delayDuration={0}>
-                  <Tooltip.Trigger className="w-full">
-                    <Link passHref href={`/project/${projectRef}/auth/policies?search=${table.id}`}>
-                      <Button
-                        type="default"
-                        className="group !h-[28px] !py-0"
-                        icon={<IconPlusCircle size={12} />}
+                  <Tooltip.Trigger asChild className="w-full">
+                    <Button
+                      asChild
+                      type="default"
+                      className="group"
+                      icon={<PlusCircle strokeWidth={1.5} className="text-foreground-muted" />}
+                    >
+                      <Link
+                        passHref
+                        href={`/project/${projectRef}/auth/policies?search=${table.id}`}
                       >
                         Add RLS policy
-                      </Button>
-                    </Link>
+                      </Link>
+                    </Button>
                   </Tooltip.Trigger>
                   <Tooltip.Portal>
                     <Tooltip.Content side="bottom">
@@ -190,35 +186,36 @@ const GridHeaderActions = ({ table, isViewSelected, isTableSelected }: GridHeade
                   </Tooltip.Portal>
                 </Tooltip.Root>
               ) : (
-                <Link passHref href={`/project/${projectRef}/auth/policies?search=${table.id}`}>
-                  <Button
-                    type={policies.length < 1 ? 'warning' : 'default'}
-                    className="group !h-[28px] !py-0"
-                    icon={
-                      policies.length > 0 ? (
-                        <span className="text-right text-xs rounded-xl px-[6px] bg-foreground-lighter/30 text-brand-1100">
-                          {policies.length}
-                        </span>
-                      ) : (
-                        <IconPlusCircle size={12} />
-                      )
-                    }
-                  >
+                <Button
+                  asChild
+                  type={policies.length < 1 ? 'warning' : 'default'}
+                  className="group"
+                  icon={
+                    policies.length > 0 ? (
+                      <span className="text-right text-xs rounded-xl px-[6px] bg-foreground-lighter/30 text-brand-1100">
+                        {policies.length}
+                      </span>
+                    ) : (
+                      <PlusCircle strokeWidth={1.5} />
+                    )
+                  }
+                >
+                  <Link passHref href={`/project/${projectRef}/auth/policies?search=${table.id}`}>
                     Auth {policies.length > 1 ? 'policies' : 'policy'}
-                  </Button>
-                </Link>
+                  </Link>
+                </Button>
               )}
-            </div>
+            </>
           ) : (
             <Popover_Shadcn_ open={open} onOpenChange={() => setOpen(!open)} modal={false}>
               <PopoverTrigger_Shadcn_ asChild>
-                <Button type="warning" icon={<IconLock size={15} />}>
+                <Button type="warning" icon={<Lock strokeWidth={1.5} />}>
                   RLS disabled
                 </Button>
               </PopoverTrigger_Shadcn_>
               <PopoverContent_Shadcn_ className="min-w-[395px] text-sm" align="end">
                 <h3 className="flex items-center gap-2">
-                  <IconLock size={14} /> Row Level Security (RLS)
+                  <Lock /> Row Level Security (RLS)
                 </h3>
                 <div className="grid gap-2 mt-4">
                   <p>
@@ -250,8 +247,8 @@ const GridHeaderActions = ({ table, isViewSelected, isTableSelected }: GridHeade
             type="default"
             icon={
               <MousePointer2
-                size={14}
-                className={isRealtimeEnabled ? 'text-brand' : 'text-lighter'}
+                strokeWidth={1.5}
+                className={isRealtimeEnabled ? 'text-brand' : 'text-foreground-muted'}
               />
             }
             onClick={() => setShowEnableRealtime(true)}
@@ -260,11 +257,7 @@ const GridHeaderActions = ({ table, isViewSelected, isTableSelected }: GridHeade
           </Button>
         )}
 
-        {doesHaveAutoGeneratedAPIDocs && (
-          <div className="mt-[1px]">
-            <APIDocsButton section={['entities', table.name]} />
-          </div>
-        )}
+        {doesHaveAutoGeneratedAPIDocs && <APIDocsButton section={['entities', table.name]} />}
       </div>
 
       <ConfirmationModal

@@ -1,10 +1,9 @@
 import { PermissionAction } from '@supabase/shared-types/out/constants'
-import { observer } from 'mobx-react-lite'
 import { PropsWithChildren, useMemo } from 'react'
 
 import NoPermission from 'components/ui/NoPermission'
 import { useCheckPermissions, usePermissionsLoaded } from 'hooks'
-import { ProjectLayoutWithAuth } from '../'
+import { ProjectLayoutWithAuth } from '../ProjectLayout/ProjectLayout'
 import TableEditorMenu from './TableEditorMenu'
 
 const TableEditorLayout = ({ children }: PropsWithChildren<{}>) => {
@@ -34,4 +33,4 @@ const TableEditorLayout = ({ children }: PropsWithChildren<{}>) => {
   )
 }
 
-export default observer(TableEditorLayout)
+export default TableEditorLayout

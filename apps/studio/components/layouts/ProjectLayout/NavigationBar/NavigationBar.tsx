@@ -17,16 +17,16 @@ import {
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
   DropdownMenuSeparator,
-  DropdownMenuSub,
   DropdownMenuTrigger,
   Separator,
   Theme,
   cn,
   themes,
-  useCommandMenu,
 } from 'ui'
+import { useCommandMenu } from 'ui-patterns/Cmdk'
 
 import { useIsAPIDocsSidePanelEnabled } from 'components/interfaces/App/FeaturePreview/FeaturePreviewContext'
+import { useSignOut } from 'lib/auth'
 import { IS_PLATFORM } from 'lib/constants'
 import { detectOS } from 'lib/helpers'
 import { useProfile } from 'lib/profile'
@@ -53,6 +53,8 @@ const NavigationBar = () => {
   const { ref: projectRef } = useParams()
   const { setIsOpen } = useCommandMenu()
   const snap = useAppStateSnapshot()
+
+  const signOut = useSignOut()
 
   const navLayoutV2 = useFlag('navigationLayoutV2')
   const isNewAPIDocsEnabled = useIsAPIDocsSidePanelEnabled()
@@ -81,6 +83,13 @@ const NavigationBar = () => {
 
   const otherRoutes = generateOtherRoutes(projectRef, project)
   const settingsRoutes = generateSettingsRoutes(projectRef, project)
+
+  const onCloseNavigationIconLink = (event: any) => {
+    snap.setNavigationPanelOpen(
+      false,
+      event.target.id === 'icon-link' || ['svg', 'path'].includes(event.target.localName)
+    )
+  }
 
   return (
     <div className="w-14 h-full flex flex-col">
@@ -118,6 +127,7 @@ const NavigationBar = () => {
               icon: <Home size={ICON_SIZE} strokeWidth={ICON_STROKE_WIDTH} />,
               link: `/project/${projectRef}`,
             }}
+            onClick={onCloseNavigationIconLink}
           />
           <Separator className="my-1 bg-border-muted" />
           {toolRoutes.map((route) => (
@@ -125,6 +135,7 @@ const NavigationBar = () => {
               key={route.key}
               route={route}
               isActive={activeRoute === route.key}
+              onClick={onCloseNavigationIconLink}
             />
           ))}
           <Separator className="my-1 bg-border-muted" />
@@ -133,6 +144,7 @@ const NavigationBar = () => {
               key={route.key}
               route={route}
               isActive={activeRoute === route.key}
+              onClick={onCloseNavigationIconLink}
             />
           ))}
           <Separator className="my-1 bg-border-muted" />
@@ -141,7 +153,10 @@ const NavigationBar = () => {
               return (
                 <NavigationIconButton
                   key={route.key}
-                  onClick={() => snap.setShowProjectApiDocs(true)}
+                  onClick={() => {
+                    snap.setShowProjectApiDocs(true)
+                    snap.setNavigationPanelOpen(false)
+                  }}
                   icon={<FileText size={ICON_SIZE} strokeWidth={ICON_STROKE_WIDTH} />}
                 >
                   Project API
@@ -153,6 +168,7 @@ const NavigationBar = () => {
                   key={route.key}
                   route={route}
                   isActive={activeRoute === route.key}
+                  onClick={onCloseNavigationIconLink}
                 />
               )
             }
@@ -165,13 +181,17 @@ const NavigationBar = () => {
               key={route.key}
               route={route}
               isActive={activeRoute === route.key}
+              onClick={onCloseNavigationIconLink}
             />
           ))}
 
           {IS_PLATFORM && (
             <NavigationIconButton
               size="tiny"
-              onClick={() => setIsOpen(true)}
+              onClick={() => {
+                setIsOpen(true)
+                snap.setNavigationPanelOpen(false)
+              }}
               type="text"
               icon={<Search size={ICON_SIZE} strokeWidth={2} />}
               rightText={
@@ -229,18 +249,24 @@ const NavigationBar = () => {
                       'transition-all'
                     )}
                   >
-                    <span
-                      title={profile?.username}
-                      className="w-full text-left text-foreground truncate"
-                    >
-                      {profile?.username}
-                    </span>
-                    <span
-                      title={profile?.primary_email}
-                      className="w-full text-left text-foreground-light text-xs truncate"
-                    >
-                      {profile?.primary_email}
-                    </span>
+                    {profile && IS_PLATFORM && (
+                      <>
+                        <span
+                          title={profile.username}
+                          className="w-full text-left text-foreground truncate"
+                        >
+                          {profile.username}
+                        </span>
+                        {profile.primary_email !== profile.username && (
+                          <span
+                            title={profile.primary_email}
+                            className="w-full text-left text-foreground-light text-xs truncate"
+                          >
+                            {profile.primary_email}
+                          </span>
+                        )}
+                      </>
+                    )}
                   </span>
                 </div>
               </Button>
@@ -248,27 +274,48 @@ const NavigationBar = () => {
             <DropdownMenuContent side="top" align="start">
               {IS_PLATFORM && (
                 <>
-                  <DropdownMenuSub>{}</DropdownMenuSub>
-                  <DropdownMenuItem key="header" className="space-x-2" asChild>
-                    <Link href="/account/me">
-                      <Settings size={14} strokeWidth={1.5} />
-                      <p>Account preferences</p>
-                    </Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    key="header"
-                    className="space-x-2"
-                    onClick={() => snap.setShowFeaturePreviewModal(true)}
-                    onSelect={() => snap.setShowFeaturePreviewModal(true)}
-                  >
-                    <FlaskConical size={14} strokeWidth={2} />
-                    <p>Feature previews</p>
-                  </DropdownMenuItem>
+                  <div className="px-2 py-1 flex flex-col gap-0 text-sm">
+                    {profile && (
+                      <>
+                        <span
+                          title={profile.username}
+                          className="w-full text-left text-foreground truncate"
+                        >
+                          {profile.username}
+                        </span>
+                        {profile.primary_email !== profile.username && (
+                          <span
+                            title={profile.primary_email}
+                            className="w-full text-left text-foreground-light text-xs truncate"
+                          >
+                            {profile.primary_email}
+                          </span>
+                        )}
+                      </>
+                    )}
+                  </div>
                   <DropdownMenuSeparator />
+                  <DropdownMenuGroup>
+                    <DropdownMenuItem className="flex gap-2" asChild>
+                      <Link href="/account/me">
+                        <Settings size={14} strokeWidth={1.5} className="text-foreground-muted" />
+                        Account preferences
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      className="flex gap-2"
+                      onClick={() => snap.setShowFeaturePreviewModal(true)}
+                      onSelect={() => snap.setShowFeaturePreviewModal(true)}
+                    >
+                      <FlaskConical size={14} strokeWidth={1.5} className="text-foreground-muted" />
+                      Feature previews
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                  </DropdownMenuGroup>
                 </>
               )}
-              <DropdownMenuLabel>Theme</DropdownMenuLabel>
               <DropdownMenuGroup>
+                <DropdownMenuLabel>Theme</DropdownMenuLabel>
                 <DropdownMenuRadioGroup
                   value={theme}
                   onValueChange={(value) => {
@@ -286,6 +333,21 @@ const NavigationBar = () => {
                     ))}
                 </DropdownMenuRadioGroup>
               </DropdownMenuGroup>
+              {IS_PLATFORM && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuGroup>
+                    <DropdownMenuItem
+                      onSelect={async () => {
+                        await signOut()
+                        await router.push('/sign-in')
+                      }}
+                    >
+                      Log out
+                    </DropdownMenuItem>
+                  </DropdownMenuGroup>
+                </>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
         </ul>

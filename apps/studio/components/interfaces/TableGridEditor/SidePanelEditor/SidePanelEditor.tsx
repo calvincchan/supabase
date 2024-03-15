@@ -6,28 +6,30 @@ import { toast } from 'react-hot-toast'
 import { Modal } from 'ui'
 
 import { useProjectContext } from 'components/layouts/ProjectLayout/ProjectContext'
-import ConfirmationModal from 'components/ui/ConfirmationModal'
+import { ToastLoader } from 'components/ui/ToastLoader'
 import { useDatabasePublicationCreateMutation } from 'data/database-publications/database-publications-create-mutation'
 import { useDatabasePublicationsQuery } from 'data/database-publications/database-publications-query'
 import { useDatabasePublicationUpdateMutation } from 'data/database-publications/database-publications-update-mutation'
-import { ForeignKeyConstraint } from 'data/database/foreign-key-constraints-query'
+import type { Constraint } from 'data/database/constraints-query'
+import type { ForeignKeyConstraint } from 'data/database/foreign-key-constraints-query'
 import { entityTypeKeys } from 'data/entity-types/keys'
 import { sqlKeys } from 'data/sql/keys'
 import { useTableRowCreateMutation } from 'data/table-rows/table-row-create-mutation'
 import { useTableRowUpdateMutation } from 'data/table-rows/table-row-update-mutation'
 import { tableKeys } from 'data/tables/keys'
 import { getTables } from 'data/tables/tables-query'
-import { useStore, useUrlState } from 'hooks'
+import { useUrlState } from 'hooks'
 import { useGetImpersonatedRole } from 'state/role-impersonation-state'
 import { useTableEditorStateSnapshot } from 'state/table-editor'
-import { Dictionary } from 'types'
+import type { Dictionary } from 'types'
+import ConfirmationModal from 'ui-patterns/Dialogs/ConfirmationModal'
 import { ColumnEditor, RowEditor, SpreadsheetImport, TableEditor } from '.'
-import { ForeignKey } from './ForeignKeySelector/ForeignKeySelector.types'
+import type { ForeignKey } from './ForeignKeySelector/ForeignKeySelector.types'
 import ForeignRowSelector from './RowEditor/ForeignRowSelector/ForeignRowSelector'
-import JsonEdit from './RowEditor/JsonEditor/JsonEditor'
+import JsonEditor from './RowEditor/JsonEditor/JsonEditor'
 import { TextEditor } from './RowEditor/TextEditor'
 import SchemaEditor from './SchemaEditor'
-import { ColumnField, CreateColumnPayload, UpdateColumnPayload } from './SidePanelEditor.types'
+import type { ColumnField, CreateColumnPayload, UpdateColumnPayload } from './SidePanelEditor.types'
 import {
   createColumn,
   createTable,
@@ -37,8 +39,7 @@ import {
   updateColumn,
   updateTable,
 } from './SidePanelEditor.utils'
-import { ImportContent } from './TableEditor/TableEditor.types'
-import { Constraint } from 'data/database/constraints-query'
+import type { ImportContent } from './TableEditor/TableEditor.types'
 
 export interface SidePanelEditorProps {
   editable?: boolean
@@ -59,7 +60,6 @@ const SidePanelEditor = ({
   const snap = useTableEditorStateSnapshot()
   const [_, setParams] = useUrlState({ arrayKeys: ['filter', 'sort'] })
 
-  const { ui } = useStore()
   const queryClient = useQueryClient()
   const { project } = useProjectContext()
 
@@ -202,11 +202,16 @@ const SidePanelEditor = ({
   const saveColumn = async (
     payload: CreateColumnPayload | UpdateColumnPayload,
     isNewRecord: boolean,
-    configuration: { columnId?: string; primaryKey?: Constraint },
+    configuration: {
+      columnId?: string
+      primaryKey?: Constraint
+      foreignKeyRelations: ForeignKey[]
+      existingForeignKeyRelations: ForeignKeyConstraint[]
+    },
     resolve: any
   ) => {
     const selectedColumnToEdit = snap.sidePanel?.type === 'column' && snap.sidePanel.column
-    const { columnId, primaryKey } = configuration
+    const { columnId, primaryKey, foreignKeyRelations, existingForeignKeyRelations } = configuration
 
     const response = isNewRecord
       ? await createColumn({
@@ -215,6 +220,7 @@ const SidePanelEditor = ({
           payload: payload as CreateColumnPayload,
           selectedTable: selectedTable as PostgresTable,
           primaryKey,
+          foreignKeyRelations,
         })
       : await updateColumn({
           projectRef: project?.ref!,
@@ -223,10 +229,12 @@ const SidePanelEditor = ({
           payload: payload as UpdateColumnPayload,
           selectedTable: selectedTable as PostgresTable,
           primaryKey,
+          foreignKeyRelations,
+          existingForeignKeyRelations,
         })
 
     if (response?.error) {
-      ui.setNotification({ category: 'error', message: response.error.message })
+      toast.error(response.error.message)
     } else {
       if (
         !isNewRecord &&
@@ -487,10 +495,9 @@ const SidePanelEditor = ({
     }
 
     const { file, rowCount, selectedHeaders, resolve } = importContent
-    const toastId = ui.setNotification({
-      category: 'loading',
-      message: `Adding ${rowCount.toLocaleString()} rows to ${selectedTable.name}`,
-    })
+    const toastId = toast.loading(
+      `Adding ${rowCount.toLocaleString()} rows to ${selectedTable.name}`
+    )
 
     if (file && rowCount > 0) {
       // CSV file upload
@@ -501,12 +508,13 @@ const SidePanelEditor = ({
         selectedTable,
         selectedHeaders,
         (progress: number) => {
-          ui.setNotification({
-            id: toastId,
-            progress,
-            category: 'loading',
-            message: `Adding ${rowCount.toLocaleString()} rows to ${selectedTable.name}`,
-          })
+          toast.loading(
+            <ToastLoader
+              progress={progress}
+              message={`Adding ${rowCount.toLocaleString()} rows to ${selectedTable.name}`}
+            />,
+            { id: toastId }
+          )
         }
       )
       if (res.error) {
@@ -522,14 +530,15 @@ const SidePanelEditor = ({
         importContent.rows,
         selectedHeaders,
         (progress: number) => {
-          ui.setNotification({
-            id: toastId,
-            progress,
-            category: 'loading',
-            message: `Adding ${importContent.rows.length.toLocaleString()} rows to ${
-              selectedTable.name
-            }`,
-          })
+          toast.loading(
+            <ToastLoader
+              progress={progress}
+              message={`Adding ${importContent.rows.length.toLocaleString()} rows to ${
+                selectedTable.name
+              }`}
+            />,
+            { id: toastId }
+          )
         }
       )
       if (res.error) {
@@ -543,10 +552,8 @@ const SidePanelEditor = ({
         sqlKeys.query(project?.ref, [selectedTable!.schema, selectedTable!.name])
       ),
     ])
-    ui.setNotification({
+    toast.success(`Successfully imported ${rowCount} rows of data into ${selectedTable.name}`, {
       id: toastId,
-      category: 'success',
-      message: `Successfully imported ${rowCount} rows of data into ${selectedTable.name}`,
     })
     resolve()
     snap.closeSidePanel()
@@ -600,7 +607,7 @@ const SidePanelEditor = ({
         updateEditorDirty={() => setIsEdited(true)}
       />
       <SchemaEditor visible={snap.sidePanel?.type === 'schema'} closePanel={onClosePanel} />
-      <JsonEdit
+      <JsonEditor
         visible={snap.sidePanel?.type === 'json'}
         column={(snap.sidePanel?.type === 'json' && snap.sidePanel.jsonValue.column) || ''}
         jsonString={(snap.sidePanel?.type === 'json' && snap.sidePanel.jsonValue.jsonString) || ''}
