@@ -1,11 +1,7 @@
-alter table "public"."remark" alter column "content" drop not null;
+ALTER TABLE "public"."remark"
+ALTER COLUMN "content"
+DROP NOT NULL;
 
-create policy "Enable read access for all users"
-on "public"."remark"
-as permissive
-for select
-to authenticated
-using (true);
-
-
-
+CREATE POLICY "Enable read access for all users" ON "public"."remark" AS permissive FOR
+SELECT
+  TO authenticated USING (TRUE);
