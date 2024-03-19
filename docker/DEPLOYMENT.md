@@ -74,3 +74,11 @@ Nothing to do.
 ### 20240314060710_safeguarding_note.sql
 
 1. Enable realtime to table `safeguarding_note`.
+
+### 20240315191018_role_custom_claim
+
+1. add these to .env to enable custom access token hook
+GOTRUE_HOOK_CUSTOM_ACCESS_TOKEN_ENABLED=true
+GOTRUE_HOOK_CUSTOM_ACCESS_TOKEN_URI="pg-functions://postgres/public/custom_access_token_hook"
+
+2. double check role_permission table is populated
