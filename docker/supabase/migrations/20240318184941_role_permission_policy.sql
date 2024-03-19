@@ -81,6 +81,8 @@ VALUES
   ('Li Ren GLS', 'remark:list'),
   ('Li Ren GLS', 'safeguarding_note:list'),
   ('Li Ren GLS', 'safeguarding_note:create'),
+  ('Li Ren GLS', 'safeguarding_note:edit'),
+  ('Li Ren GLS', 'safeguarding_note:delete'),
   ('Li Ren Contact', 'dashboard:list'),
   ('Li Ren Contact', 'case:list'),
   ('Li Ren Contact', 'case:create'),
@@ -95,7 +97,9 @@ VALUES
   ('Li Ren Contact', 'target:create'),
   ('Li Ren Contact', 'remark:list'),
   ('Li Ren Contact', 'safeguarding_note:list'),
-  ('Li Ren Contact', 'safeguarding_note:create');
+  ('Li Ren Contact', 'safeguarding_note:create'),
+  ('Li Ren Contact', 'safeguarding_note:edit'),
+  ('Li Ren Contact', 'safeguarding_note:delete');
 
 DROP POLICY "Enable insert for LR-Leadership, LR-GLS, LR-Contact" ON "public"."case";
 
