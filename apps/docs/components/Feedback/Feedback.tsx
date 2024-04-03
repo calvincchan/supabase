@@ -85,7 +85,13 @@ function Feedback() {
   const showNo = unanswered || isNo
 
   async function sendFeedbackVote(response: Response) {
-    const { error } = await supabase.from('feedback').insert({ vote: response, page: pathname })
+    const { error } = await supabase.from('feedback').insert({
+      vote: response,
+      page: pathname,
+      metadata: {
+        query: Object.fromEntries(new URLSearchParams(window.location.search).entries()),
+      },
+    })
     if (error) console.error(error)
   }
 
@@ -178,12 +184,14 @@ function Feedback() {
           )}
         >
           <span className="text-foreground-light">Thanks for your feedback!</span>
+          {/**
           <FeedbackButton
             ref={feedbackButtonRef}
             onClick={() => setModalOpen(true)}
             isYes={isYes}
             visible={!unanswered}
           />
+          */}
         </div>
       </div>
       <FeedbackModal
