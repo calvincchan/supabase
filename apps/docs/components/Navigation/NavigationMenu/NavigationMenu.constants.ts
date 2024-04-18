@@ -113,6 +113,12 @@ export const HOMEPAGE_MENU_ITEMS: HomepageMenuItems = [
       level: 'reference_dart',
     },
     {
+      label: 'Swift',
+      icon: 'reference-swift',
+      href: '/reference/swift/introduction',
+      level: 'reference_swift',
+    },
+    {
       label: 'Python',
       icon: 'reference-python',
       href: '/reference/python/introduction',
@@ -124,13 +130,6 @@ export const HOMEPAGE_MENU_ITEMS: HomepageMenuItems = [
       icon: 'reference-csharp',
       href: '/reference/csharp/introduction',
       level: 'reference_csharp',
-      community: true,
-    },
-    {
-      label: 'Swift',
-      icon: 'reference-swift',
-      href: '/reference/swift/introduction',
-      level: 'reference_swift',
       community: true,
     },
     {
@@ -611,10 +610,6 @@ export const auth = {
         { name: 'Multi-Factor Authentication', url: '/guides/auth/auth-mfa' },
         { name: 'Row Level Security', url: '/guides/auth/row-level-security' },
         {
-          name: 'Column Level Security',
-          url: '/guides/auth/column-level-security',
-        },
-        {
           name: 'Custom Claims & RBAC',
           url: '/guides/auth/custom-claims-and-role-based-access-control-rbac',
         },
@@ -775,6 +770,10 @@ export const database: NavMenuConstant = {
         {
           name: 'Superuser Access and Unsupported Operations',
           url: '/guides/database/postgres/roles-superuser',
+        },
+        {
+          name: 'Column level privileges',
+          url: '/guides/database/postgres/column-level-privileges',
         },
       ],
     },
@@ -1141,6 +1140,10 @@ export const functions: NavMenuConstant = {
           url: '/guides/functions/routing',
         },
         {
+          name: 'Running AI Models',
+          url: '/guides/functions/ai-models',
+        },
+        {
           name: 'Regional invocations',
           url: '/guides/functions/regional-invocation',
         },
@@ -1187,6 +1190,10 @@ export const functions: NavMenuConstant = {
         {
           name: 'Generating OG images ',
           url: '/guides/functions/examples/og-image',
+        },
+        {
+          name: 'Semantic AI Search',
+          url: '/guides/functions/examples/semantic-search',
         },
         {
           name: 'CAPTCHA support with Cloudflare Turnstile',
@@ -1332,6 +1339,10 @@ export const storage: NavMenuConstant = {
       url: undefined,
       items: [
         {
+          name: 'Ownership',
+          url: '/guides/storage/security/ownership',
+        },
+        {
           name: 'Access Control',
           url: '/guides/storage/security/access-control',
         },
@@ -1349,6 +1360,10 @@ export const storage: NavMenuConstant = {
           name: 'Resumable Uploads',
           url: '/guides/storage/uploads/resumable-uploads',
         },
+        {
+          name: 'S3 Uploads',
+          url: '/guides/storage/uploads/s3-uploads',
+        },
         { name: 'Limits', url: '/guides/storage/uploads/file-limits' },
       ],
     },
@@ -1361,6 +1376,22 @@ export const storage: NavMenuConstant = {
           name: 'Image Transformations',
           url: '/guides/storage/serving/image-transformations',
         },
+      ],
+    },
+    {
+      name: 'Management',
+      url: undefined,
+      items: [
+        { name: 'Copy / Move Objects', url: '/guides/storage/management/copy-move-objects' },
+        { name: 'Delete Objects', url: '/guides/storage/management/delete-objects' },
+      ],
+    },
+    {
+      name: 'S3',
+      url: undefined,
+      items: [
+        { name: 'Authentication', url: '/guides/storage/s3/authentication' },
+        { name: 'API Compatibility', url: '/guides/storage/s3/compatibility' },
       ],
     },
     {
@@ -1389,6 +1420,7 @@ export const storage: NavMenuConstant = {
           name: 'Helper Functions',
           url: '/guides/storage/schema/helper-functions',
         },
+        { name: 'Custom Roles', url: '/guides/storage/schema/custom-roles' },
       ],
     },
     {
