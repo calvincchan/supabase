@@ -11,7 +11,8 @@ UPDATE "public"."session"
 SET
   recurrence_parent = id
 WHERE
-  recurrence_parent IS NULL;
+  time_frame = 'B'
+  AND recurrence_parent IS NULL;
 
 -- update the recurrence start date with the start date of the recurrence parent
 UPDATE "public"."session" a
