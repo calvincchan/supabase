@@ -50,3 +50,25 @@ BEGIN
   RETURN NEW;
 END;
 $function$;
+
+-- Update gls_handlers of existing cases
+UPDATE "public"."case"
+SET
+  gls_handlers = COALESCE(
+    (
+      SELECT
+        STRING_AGG(
+          b.name,
+          '|'
+          ORDER BY
+            b.name ASC
+        )
+      FROM
+        case_handler AS a
+        JOIN team_member AS b ON a.user_id = b.id
+      WHERE
+        a.case_id = "case".id
+        AND b."role" = 'Li Ren GLS'::role_enum
+    ),
+    ''
+  );
