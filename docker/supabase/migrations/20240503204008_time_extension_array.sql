@@ -2,8 +2,7 @@
 -- convert NULL to empty array
 ALTER TABLE "public"."case"
 ALTER COLUMN iaa_time_extension
-SET DATA TYPE iaa_time_extension_enum[]
-USING ARRAY[iaa_time_extension]::iaa_time_extension_enum[];
+SET DATA TYPE iaa_time_extension_enum[] USING ARRAY[iaa_time_extension]::iaa_time_extension_enum[];
 
 UPDATE "public"."case"
 SET
@@ -13,7 +12,7 @@ WHERE
 
 ALTER TABLE "public"."case"
 ALTER COLUMN iaa_time_extension
-SET DEFAULT {}::iaa_time_extension_enum[];
+SET DEFAULT '{}'::iaa_time_extension_enum[];
 
 ALTER TABLE "public"."case"
 ALTER COLUMN iaa_time_extension
