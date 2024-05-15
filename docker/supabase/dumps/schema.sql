@@ -14,25 +14,11 @@ CREATE SCHEMA IF NOT EXISTS "audit";
 
 ALTER SCHEMA "audit" OWNER TO "postgres";
 
-CREATE EXTENSION IF NOT EXISTS "pg_net" WITH SCHEMA "extensions";
-
-CREATE EXTENSION IF NOT EXISTS "pgsodium" WITH SCHEMA "pgsodium";
-
 CREATE SCHEMA IF NOT EXISTS "public";
 
 ALTER SCHEMA "public" OWNER TO "pg_database_owner";
 
-CREATE EXTENSION IF NOT EXISTS "pg_graphql" WITH SCHEMA "graphql";
-
-CREATE EXTENSION IF NOT EXISTS "pg_stat_statements" WITH SCHEMA "extensions";
-
-CREATE EXTENSION IF NOT EXISTS "pgcrypto" WITH SCHEMA "extensions";
-
-CREATE EXTENSION IF NOT EXISTS "pgjwt" WITH SCHEMA "extensions";
-
-CREATE EXTENSION IF NOT EXISTS "supabase_vault" WITH SCHEMA "vault";
-
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp" WITH SCHEMA "extensions";
+COMMENT ON SCHEMA "public" IS 'standard public schema';
 
 CREATE TYPE "audit"."operation" AS ENUM (
     'INSERT',
@@ -42,6 +28,179 @@ CREATE TYPE "audit"."operation" AS ENUM (
 );
 
 ALTER TYPE "audit"."operation" OWNER TO "postgres";
+
+CREATE TYPE "public"."core_needs_enum" AS ENUM (
+    'Learning',
+    'Learning (IAA only)',
+    'Social emotional',
+    'Behavioural',
+    'Physical',
+    'Giftedness',
+    'Others'
+);
+
+ALTER TYPE "public"."core_needs_enum" OWNER TO "postgres";
+
+CREATE TYPE "public"."diagnosis_enum" AS ENUM (
+    'Anxiety',
+    'Attention (ADHD; ADD)',
+    'Autism Spectrum Disorder (ASD)',
+    'Depression',
+    'Dyslexia',
+    'Dyscalculia',
+    'Dysgraphia',
+    'Dyspraxia',
+    'Eating disorders',
+    'Executive Functioning skills',
+    'Obsessive Compulsive Disorder',
+    'Post-traumatic Stress Disorder',
+    'Sensory Processing Disorder',
+    'Social Communication Disorder',
+    'Others'
+);
+
+ALTER TYPE "public"."diagnosis_enum" OWNER TO "postgres";
+
+CREATE TYPE "public"."grade_enum" AS ENUM (
+    'Y1',
+    'Y2',
+    'FY',
+    '01',
+    '02',
+    '03',
+    '04',
+    '05',
+    '06',
+    '07',
+    '08',
+    '09',
+    '10',
+    '11',
+    '12'
+);
+
+ALTER TYPE "public"."grade_enum" OWNER TO "supabase_admin";
+
+CREATE TYPE "public"."iaa_enum" AS ENUM (
+    'Separate room',
+    'Time extension',
+    'Word processor',
+    'Oral exams (25%)',
+    'Listening exam',
+    'Scribing',
+    'Paper size',
+    'Breaks',
+    'Others'
+);
+
+ALTER TYPE "public"."iaa_enum" OWNER TO "postgres";
+
+CREATE TYPE "public"."iaa_time_extension_enum" AS ENUM (
+    '10%',
+    '25%',
+    '50%',
+    'Subjects ALL',
+    'Subjects ONLY'
+);
+
+ALTER TYPE "public"."iaa_time_extension_enum" OWNER TO "postgres";
+
+CREATE TYPE "public"."iaa_word_processor_enum" AS ENUM (
+    'With spellchecker',
+    'Without spellchecker',
+    'Subjects ALL',
+    'Subjects ONLY'
+);
+
+ALTER TYPE "public"."iaa_word_processor_enum" OWNER TO "supabase_admin";
+
+CREATE TYPE "public"."permission_enum" AS ENUM (
+    'case:audit',
+    'case:create',
+    'case:edit',
+    'case:list',
+    'dashboard:list',
+    'my_case:list',
+    'progress_note:create',
+    'progress_note:delete',
+    'progress_note:edit',
+    'progress_note:list',
+    'remark:list',
+    'reminder:create',
+    'reminder:delete',
+    'reminder:edit',
+    'reminder:list',
+    'safeguarding_note:create',
+    'safeguarding_note:delete',
+    'safeguarding_note:edit',
+    'safeguarding_note:insert',
+    'safeguarding_note:list',
+    'safeguarding_note:read_all',
+    'session:create',
+    'session:delete',
+    'session:edit',
+    'session:list',
+    'target:create',
+    'target:delete',
+    'target:edit',
+    'target:list',
+    'case_handler:list',
+    'case_handler:create',
+    'case_handler:edit',
+    'case_handler:delete',
+    'page:list',
+    'page:create',
+    'page:edit',
+    'page:delete',
+    'specialist:list',
+    'specialist:create',
+    'specialist:edit',
+    'specialist:delete',
+    'pending_member:list',
+    'pending_member:create',
+    'pending_member:edit',
+    'pending_member:delete',
+    'team_member:list',
+    'team_member:create',
+    'team_member:edit',
+    'team_member:delete'
+);
+
+ALTER TYPE "public"."permission_enum" OWNER TO "supabase_admin";
+
+CREATE TYPE "public"."role_enum" AS ENUM (
+    'IT Admin',
+    'GLL',
+    'Nurse',
+    'Li Ren Leadership',
+    'Li Ren GLS',
+    'Li Ren Contact'
+);
+
+ALTER TYPE "public"."role_enum" OWNER TO "postgres";
+
+CREATE TYPE "public"."specialist_enum" AS ENUM (
+    'Clinical Psychologist',
+    'Educational Psychologist',
+    'Psychiatrist',
+    'Occupational Therapist',
+    'Speech Therapist',
+    'Counselor',
+    'Family Therapist',
+    'Other Therapist',
+    'Others'
+);
+
+ALTER TYPE "public"."specialist_enum" OWNER TO "supabase_admin";
+
+CREATE TYPE "public"."target_type_enum" AS ENUM (
+    'Academic',
+    'Social Emotional',
+    'Behavioural',
+    'Others'
+);
+
+ALTER TYPE "public"."target_type_enum" OWNER TO "postgres";
 
 CREATE OR REPLACE FUNCTION "audit"."disable_tracking"("regclass") RETURNS "void"
     LANGUAGE "plpgsql" SECURITY DEFINER
@@ -212,6 +371,38 @@ $$;
 
 ALTER FUNCTION "audit"."truncate_trigger"() OWNER TO "postgres";
 
+CREATE OR REPLACE FUNCTION "public"."custom_access_token_hook"("_event" "jsonb") RETURNS "jsonb"
+    LANGUAGE "plpgsql" IMMUTABLE SECURITY DEFINER
+    AS $$
+  declare
+    claims jsonb;
+    user_role "public"."role_enum";
+  begin
+    -- Get the user's role, first from team_member, then from pending_member
+    select COALESCE(
+      (select role from "public"."team_member" where id = (_event->>'user_id')::uuid),
+      (select role from "public"."pending_member" where id = _event->'claims'->>'email')
+    ) into user_role;
+
+    claims := _event->'claims';
+
+    if user_role is not null then
+      -- Set the claim
+      claims := jsonb_set(claims, '{user_role}', to_jsonb(user_role));
+    else
+      claims := jsonb_set(claims, '{user_role}', 'null');
+    end if;
+
+    -- Update the 'claims' object in the original event
+    _event := jsonb_set(_event, '{claims}', claims);
+
+    -- Return the modified or original event
+    return _event;
+  end;
+$$;
+
+ALTER FUNCTION "public"."custom_access_token_hook"("_event" "jsonb") OWNER TO "postgres";
+
 CREATE OR REPLACE FUNCTION "public"."find_next_upcoming_session"("p_case_id" bigint) RETURNS timestamp with time zone
     LANGUAGE "plpgsql"
     AS $$
@@ -229,6 +420,21 @@ END;
 $$;
 
 ALTER FUNCTION "public"."find_next_upcoming_session"("p_case_id" bigint) OWNER TO "postgres";
+
+CREATE OR REPLACE FUNCTION "public"."get_case_gls_details"("p_case_id" bigint) RETURNS TABLE("user_id" "uuid", "case_id" bigint, "name" "text")
+    LANGUAGE "plpgsql"
+    AS $$
+BEGIN
+  RETURN QUERY
+  SELECT a.user_id, a.case_id, b.name
+  FROM case_gls AS a
+  JOIN team_member AS b ON a.user_id = b.id
+  WHERE a.case_id = p_case_id
+  ORDER BY b.name;
+END;
+$$;
+
+ALTER FUNCTION "public"."get_case_gls_details"("p_case_id" bigint) OWNER TO "postgres";
 
 CREATE OR REPLACE FUNCTION "public"."get_case_handler_details"("p_case_id" bigint) RETURNS TABLE("user_id" "uuid", "case_id" bigint, "name" "text", "is_main_handler" boolean)
     LANGUAGE "plpgsql"
@@ -272,30 +478,18 @@ $$;
 
 ALTER FUNCTION "public"."get_name"() OWNER TO "postgres";
 
-CREATE OR REPLACE FUNCTION "public"."get_role"() RETURNS "text"
+CREATE OR REPLACE FUNCTION "public"."get_role"() RETURNS "public"."role_enum"
     LANGUAGE "plpgsql"
     AS $$
 DECLARE
-  v_role CHAR(1);
+  v_role role_enum;
 BEGIN
-  SELECT role INTO v_role FROM team_member WHERE auth.uid() = p_user_id;
+  SELECT role INTO v_role FROM team_member WHERE id = auth.uid();
   RETURN v_role;
 END;
 $$;
 
 ALTER FUNCTION "public"."get_role"() OWNER TO "postgres";
-
-CREATE OR REPLACE FUNCTION "public"."insert_into_target"() RETURNS "trigger"
-    LANGUAGE "plpgsql"
-    AS $$
-BEGIN
-    INSERT INTO "target" ("id")
-    VALUES (NEW."id");
-    RETURN NEW;
-END;
-$$;
-
-ALTER FUNCTION "public"."insert_into_target"() OWNER TO "postgres";
 
 CREATE OR REPLACE FUNCTION "public"."insert_user"() RETURNS "trigger"
     LANGUAGE "plpgsql" SECURITY DEFINER
@@ -308,6 +502,24 @@ END;
 $$;
 
 ALTER FUNCTION "public"."insert_user"() OWNER TO "postgres";
+
+CREATE OR REPLACE FUNCTION "public"."is_allowed"("requested_permission" "public"."permission_enum") RETURNS boolean
+    LANGUAGE "plpgsql"
+    AS $$
+declare
+  bind_permissions int;
+begin
+  select count(*)
+  from public.role_permission
+  where permission = requested_permission
+    and role = (auth.jwt() ->> 'user_role')::public.role_enum
+  into bind_permissions;
+
+  return bind_permissions > 0;
+end;
+$$;
+
+ALTER FUNCTION "public"."is_allowed"("requested_permission" "public"."permission_enum") OWNER TO "postgres";
 
 CREATE OR REPLACE FUNCTION "public"."is_case_handler"("p_case_id" bigint) RETURNS boolean
     LANGUAGE "plpgsql"
@@ -323,7 +535,7 @@ $$;
 
 ALTER FUNCTION "public"."is_case_handler"("p_case_id" bigint) OWNER TO "postgres";
 
-CREATE OR REPLACE FUNCTION "public"."is_creator"() RETURNS boolean
+CREATE OR REPLACE FUNCTION "public"."is_creator"("created_by" "uuid") RETURNS boolean
     LANGUAGE "plpgsql"
     AS $$
 BEGIN
@@ -331,21 +543,7 @@ BEGIN
 END;
 $$;
 
-ALTER FUNCTION "public"."is_creator"() OWNER TO "postgres";
-
-CREATE OR REPLACE FUNCTION "public"."is_manager"() RETURNS boolean
-    LANGUAGE "plpgsql"
-    AS $$
-BEGIN
-  RETURN (
-    SELECT EXISTS(
-      SELECT 1 FROM team_member WHERE id = auth.uid() AND role = 'A'
-    )
-  );
-END;
-$$;
-
-ALTER FUNCTION "public"."is_manager"() OWNER TO "postgres";
+ALTER FUNCTION "public"."is_creator"("created_by" "uuid") OWNER TO "postgres";
 
 CREATE OR REPLACE FUNCTION "public"."set_completed_meta"() RETURNS "trigger"
     LANGUAGE "plpgsql"
@@ -384,18 +582,30 @@ $$;
 
 ALTER FUNCTION "public"."set_main_handler"("p_case_id" bigint, "p_user_id" "uuid") OWNER TO "postgres";
 
+CREATE OR REPLACE FUNCTION "public"."set_not_null_default_empty_string"("column_name" "text", "table_name" "text") RETURNS "void"
+    LANGUAGE "plpgsql"
+    AS $$
+BEGIN
+  EXECUTE format('UPDATE %I SET %I = '''' WHERE %I IS NULL', table_name, column_name, column_name);
+  EXECUTE format('ALTER TABLE %I ALTER COLUMN %I SET DEFAULT ''''', table_name, column_name);
+  EXECUTE format('ALTER TABLE %I ALTER COLUMN %I SET NOT NULL', table_name, column_name);
+END;
+$$;
+
+ALTER FUNCTION "public"."set_not_null_default_empty_string"("column_name" "text", "table_name" "text") OWNER TO "postgres";
+
 CREATE OR REPLACE FUNCTION "public"."team_member_i_u_from_sso"() RETURNS "trigger"
     LANGUAGE "plpgsql" SECURITY DEFINER
     AS $$
 DECLARE
     new_name text;
-    new_role character(1);
+    new_role public.role_enum;
 BEGIN
     IF NEW.is_sso_user = TRUE THEN
         -- The first sso user will be a manager
         IF NOT EXISTS (SELECT 1 FROM public.team_member LIMIT 1) THEN
             INSERT INTO public.team_member(id, name, email, role, last_sign_in_at)
-            VALUES (NEW.id, '(new sso user)', NEW.email, 'A', NEW.last_sign_in_at);
+            VALUES (NEW.id, '(new sso user)', NEW.email, 'IT Admin'::public.role_enum, NEW.last_sign_in_at);
         ELSE
             -- Check if the user is already a team member
             IF EXISTS (SELECT 1 FROM public.team_member WHERE email = NEW.email) THEN
@@ -425,16 +635,16 @@ $$;
 ALTER FUNCTION "public"."team_member_i_u_from_sso"() OWNER TO "postgres";
 
 CREATE OR REPLACE FUNCTION "public"."trigger_on_session_status"() RETURNS "trigger"
-    LANGUAGE "plpgsql"
+    LANGUAGE "plpgsql" SECURITY DEFINER
     AS $$
 BEGIN
-  IF OLD.status = 'U' AND NEW.status = 'I' THEN
+  IF OLD.status = 'U' AND (NEW.status = 'I' OR NEW.status = 'X') THEN
     UPDATE "case" SET last_session_at = NOW(), last_session_by = auth.uid(), last_session_by_name = get_name() WHERE id = NEW.case_id;
     NEW.started_at = NOW();
     NEW.started_by = auth.uid();
     SELECT get_name() INTO NEW.started_by_name;
   END IF;
-  IF OLD.status = 'I' AND NEW.status = 'X' THEN
+  IF (OLD.status = 'U' OR OLD.status = 'I') AND NEW.status = 'X' THEN
     UPDATE "case" SET last_session_at = NOW(), last_session_by = auth.uid(), last_session_by_name = get_name() WHERE id = NEW.case_id;
     NEW.completed_at = NOW();
     NEW.completed_by = auth.uid();
@@ -445,6 +655,33 @@ END;
 $$;
 
 ALTER FUNCTION "public"."trigger_on_session_status"() OWNER TO "postgres";
+
+CREATE OR REPLACE FUNCTION "public"."trigger_set_case_gls"() RETURNS "trigger"
+    LANGUAGE "plpgsql"
+    AS $$
+DECLARE
+  gls_string TEXT;
+  p_case_id BIGINT;
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    p_case_id := OLD.case_id;
+  ELSE
+    p_case_id := NEW.case_id;
+  END IF;
+
+  -- all handlers
+  SELECT STRING_AGG(b.name, '|' ORDER BY b.name ASC) INTO gls_string
+  FROM case_gls AS a
+  JOIN team_member AS b ON a.user_id = b.id
+  WHERE a.case_id = p_case_id;
+
+  UPDATE "case" SET gls = COALESCE(gls_string, '') WHERE id = p_case_id;
+
+  RETURN NEW;
+END;
+$$;
+
+ALTER FUNCTION "public"."trigger_set_case_gls"() OWNER TO "postgres";
 
 CREATE OR REPLACE FUNCTION "public"."trigger_set_created_meta"() RETURNS "trigger"
     LANGUAGE "plpgsql"
@@ -462,7 +699,7 @@ CREATE OR REPLACE FUNCTION "public"."trigger_set_handlers"() RETURNS "trigger"
     LANGUAGE "plpgsql"
     AS $$
 DECLARE
-  handlers_string TEXT;
+  handler_string TEXT;
   p_case_id BIGINT;
 BEGIN
   IF TG_OP = 'DELETE' THEN
@@ -471,12 +708,13 @@ BEGIN
     p_case_id := NEW.case_id;
   END IF;
 
-  SELECT STRING_AGG(b.name, '|' ORDER BY a.is_main_handler DESC, b.name ASC) INTO handlers_string
+  -- all handlers
+  SELECT STRING_AGG(b.name, '|' ORDER BY a.is_main_handler DESC, b.name ASC) INTO handler_string
   FROM case_handler AS a
   JOIN team_member AS b ON a.user_id = b.id
   WHERE a.case_id = p_case_id;
 
-  UPDATE "case" SET handlers = COALESCE(handlers_string, '') WHERE id = p_case_id;
+  UPDATE "case" SET handlers = COALESCE(handler_string, '') WHERE id = p_case_id;
 
   RETURN NEW;
 END;
@@ -509,7 +747,7 @@ $$;
 ALTER FUNCTION "public"."trigger_set_main_handler"() OWNER TO "postgres";
 
 CREATE OR REPLACE FUNCTION "public"."trigger_set_next_upcoming_session"() RETURNS "trigger"
-    LANGUAGE "plpgsql"
+    LANGUAGE "plpgsql" SECURITY DEFINER
     AS $$
 DECLARE
   p_case_id BIGINT;
@@ -540,6 +778,20 @@ END;
 $$;
 
 ALTER FUNCTION "public"."trigger_set_updated_meta"() OWNER TO "postgres";
+
+CREATE OR REPLACE FUNCTION "public"."update_specialist_name"() RETURNS "trigger"
+    LANGUAGE "plpgsql"
+    AS $$
+BEGIN
+    IF TG_OP = 'INSERT' OR TG_OP = 'UPDATE' THEN
+        NEW."name" = TRIM(BOTH ' ' FROM UPPER(NEW."last_name") || ' ' || NEW."first_name");
+        RETURN NEW;
+    END IF;
+    RETURN NULL;
+END;
+$$;
+
+ALTER FUNCTION "public"."update_specialist_name"() OWNER TO "postgres";
 
 CREATE OR REPLACE FUNCTION "public"."update_student_name"() RETURNS "trigger"
     LANGUAGE "plpgsql"
@@ -612,16 +864,16 @@ CREATE TABLE IF NOT EXISTS "public"."case" (
     "id" bigint NOT NULL,
     "created_at" timestamp with time zone DEFAULT "now"(),
     "student_name" "text" DEFAULT ''::"text" NOT NULL,
-    "student_no" "text",
+    "student_no" "text" DEFAULT ''::"text" NOT NULL,
     "updated_at" timestamp with time zone,
     "updated_by" "uuid",
     "is_archived" boolean,
     "archived_at" timestamp with time zone,
     "archived_by" "uuid",
-    "case_status" character(1) DEFAULT 'I'::"bpchar",
+    "case_status" character(1) DEFAULT 'I'::"bpchar" NOT NULL,
     "updated_by_name" "text",
-    "grade" character varying(10),
-    "homeroom" character varying(100),
+    "grade" "public"."grade_enum",
+    "homeroom" "text" DEFAULT ''::"text" NOT NULL,
     "created_by" "uuid",
     "created_by_name" "text",
     "tier" character(1) DEFAULT '1'::"bpchar",
@@ -631,28 +883,78 @@ CREATE TABLE IF NOT EXISTS "public"."case" (
     "last_session_by_name" "text",
     "student_first_name" "text" DEFAULT ''::"text" NOT NULL,
     "student_last_name" "text" DEFAULT ''::"text" NOT NULL,
-    "background" "text",
+    "background" "text" DEFAULT ''::"text" NOT NULL,
     "student_other_name" "text" DEFAULT ''::"text" NOT NULL,
-    "gender" character(1),
+    "gender" character(1) DEFAULT '-'::"bpchar" NOT NULL,
     "dob" "date",
-    "email" "text",
-    "parent_email" "text",
-    "mother_name" "text",
-    "mother_phone" "text",
-    "mother_email" "text",
-    "father_name" "text",
-    "father_phone" "text",
-    "father_email" "text",
+    "email" "text" DEFAULT ''::"text" NOT NULL,
+    "parent_email" "text" DEFAULT ''::"text" NOT NULL,
+    "mother_name" "text" DEFAULT ''::"text" NOT NULL,
+    "mother_phone" "text" DEFAULT ''::"text" NOT NULL,
+    "mother_email" "text" DEFAULT ''::"text" NOT NULL,
+    "father_name" "text" DEFAULT ''::"text" NOT NULL,
+    "father_phone" "text" DEFAULT ''::"text" NOT NULL,
+    "father_email" "text" DEFAULT ''::"text" NOT NULL,
     "handlers" "text" DEFAULT ''::"text" NOT NULL,
-    "custom_1" "text",
-    "custom_2" "text",
-    "custom_3" "text",
-    "custom_4" "text",
-    "custom_5" "text",
-    CONSTRAINT "case_case_status_check" CHECK (("case_status" = ANY (ARRAY['I'::"bpchar", 'C'::"bpchar", 'N'::"bpchar", 'A'::"bpchar", 'R'::"bpchar", 'X'::"bpchar"])))
+    "custom_1" "text" DEFAULT ''::"text" NOT NULL,
+    "custom_2" "text" DEFAULT ''::"text" NOT NULL,
+    "custom_3" "text" DEFAULT ''::"text" NOT NULL,
+    "custom_4" "text" DEFAULT ''::"text" NOT NULL,
+    "custom_5" "text" DEFAULT ''::"text" NOT NULL,
+    "case_opened_at" "date",
+    "core_needs" "public"."core_needs_enum"[] DEFAULT '{}'::"public"."core_needs_enum"[] NOT NULL,
+    "core_needs_others" "text" DEFAULT ''::"text" NOT NULL,
+    "diagnosis" "public"."diagnosis_enum"[] DEFAULT '{}'::"public"."diagnosis_enum"[] NOT NULL,
+    "diagnosis_others" "text" DEFAULT ''::"text" NOT NULL,
+    "giftedness_identification_year" "text" DEFAULT ''::"text" NOT NULL,
+    "iaa" "public"."iaa_enum"[] DEFAULT '{}'::"public"."iaa_enum"[] NOT NULL,
+    "iaa_listening_exam" "text" DEFAULT ''::"text" NOT NULL,
+    "iaa_others" "text" DEFAULT ''::"text" NOT NULL,
+    "iaa_time_extension" "public"."iaa_time_extension_enum"[] DEFAULT '{}'::"public"."iaa_time_extension_enum"[] NOT NULL,
+    "iaa_time_extension_subjects_only" "text" DEFAULT ''::"text" NOT NULL,
+    "iaa_word_processor" "public"."iaa_word_processor_enum"[] DEFAULT '{}'::"public"."iaa_word_processor_enum"[] NOT NULL,
+    "iaa_word_processor_subjects_only" "text" DEFAULT ''::"text" NOT NULL,
+    "medical_letter" character(1) DEFAULT '-'::"bpchar" NOT NULL,
+    "medical_letter_attachments" "jsonb" DEFAULT '[]'::"jsonb" NOT NULL,
+    "pa_report" character(1) DEFAULT '-'::"bpchar" NOT NULL,
+    "pa_report_attachments" "jsonb" DEFAULT '[]'::"jsonb" NOT NULL,
+    "pa_report_last_report_at" "date",
+    "pa_report_next_report_at" "date",
+    "safeguarding_concerns" "jsonb" DEFAULT '{}'::"jsonb" NOT NULL,
+    "safeguarding_concerns_others" "text" DEFAULT ''::"text" NOT NULL,
+    "specialists" "jsonb" DEFAULT '[]'::"jsonb" NOT NULL,
+    "case_no" "text" DEFAULT ''::"text" NOT NULL,
+    "student_preferred_name" "text" DEFAULT ''::"text" NOT NULL,
+    "parent_consent_form_attachments" "jsonb" DEFAULT '[]'::"jsonb" NOT NULL,
+    "information_release_form_attachments" "jsonb" DEFAULT '[]'::"jsonb" NOT NULL,
+    "termination_form_attachments" "jsonb" DEFAULT '[]'::"jsonb" NOT NULL,
+    "gls" "text" DEFAULT ''::"text" NOT NULL,
+    "support_frequency_learning" "text" DEFAULT ''::"text" NOT NULL,
+    "support_frequency_counselling" "text" DEFAULT ''::"text" NOT NULL,
+    "medication_past" "text" DEFAULT ''::"text" NOT NULL,
+    "medication_current" "text" DEFAULT ''::"text" NOT NULL,
+    "subject_iaa" "jsonb" DEFAULT '[]'::"jsonb" NOT NULL,
+    CONSTRAINT "case_tier_check" CHECK (("tier" = ANY (ARRAY['1'::"bpchar", '2'::"bpchar", '3'::"bpchar"])))
 );
 
 ALTER TABLE "public"."case" OWNER TO "postgres";
+
+CREATE TABLE IF NOT EXISTS "public"."case_gls" (
+    "case_id" bigint NOT NULL,
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "user_id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL
+);
+
+ALTER TABLE "public"."case_gls" OWNER TO "postgres";
+
+ALTER TABLE "public"."case_gls" ALTER COLUMN "case_id" ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME "public"."case_gls_case_id_seq"
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
 
 CREATE TABLE IF NOT EXISTS "public"."case_handler" (
     "case_id" bigint NOT NULL,
@@ -683,7 +985,8 @@ CREATE TABLE IF NOT EXISTS "public"."progress_note" (
     "content" "text",
     "created_by_name" "text",
     "updated_by_name" "text",
-    "tags" "bpchar"[]
+    "tags" "bpchar"[] DEFAULT '{}'::"bpchar"[] NOT NULL,
+    "attachments" "jsonb" DEFAULT '[]'::"jsonb" NOT NULL
 );
 
 ALTER TABLE "public"."progress_note" OWNER TO "postgres";
@@ -702,7 +1005,10 @@ CREATE TABLE IF NOT EXISTS "public"."reminder" (
     "completed_at" timestamp with time zone,
     "completed_by" "uuid",
     "completed_by_name" "text",
-    "case_id" bigint
+    "case_id" bigint,
+    "start_date" "date" NOT NULL,
+    "end_date" "date" NOT NULL,
+    CONSTRAINT "end_date_check" CHECK (("end_date" >= "start_date"))
 );
 
 ALTER TABLE "public"."reminder" OWNER TO "postgres";
@@ -723,7 +1029,7 @@ CREATE TABLE IF NOT EXISTS "public"."session" (
     "completed_by" "uuid",
     "completed_by_name" "text",
     "content" "text" DEFAULT ''::"text" NOT NULL,
-    "language" character(1) DEFAULT '''E'''::"bpchar" NOT NULL,
+    "language" character(1) DEFAULT 'E'::"bpchar" NOT NULL,
     "status" character(1) DEFAULT 'U'::"bpchar" NOT NULL,
     "start_date" timestamp with time zone NOT NULL,
     "end_date" timestamp with time zone NOT NULL,
@@ -739,7 +1045,8 @@ CREATE TABLE IF NOT EXISTS "public"."session" (
     "non_case" character(1) DEFAULT ''::"bpchar" NOT NULL,
     "parent_session" character(1) DEFAULT ''::"bpchar" NOT NULL,
     "parent_session_note" "text",
-    "recurrence_parent" bigint
+    "recurrence_parent" bigint,
+    "recurrence_start_date" timestamp with time zone
 );
 
 ALTER TABLE "public"."session" OWNER TO "postgres";
@@ -752,7 +1059,9 @@ CREATE TABLE IF NOT EXISTS "public"."target" (
     "updated_at" timestamp with time zone,
     "updated_by" "uuid",
     "updated_by_name" "text",
-    "targets" "text"[] DEFAULT '{}'::"text"[] NOT NULL
+    "case_id" integer NOT NULL,
+    "target_type" "public"."target_type_enum" DEFAULT 'Others'::"public"."target_type_enum" NOT NULL,
+    "content" "text" DEFAULT ''::"text" NOT NULL
 );
 
 ALTER TABLE "public"."target" OWNER TO "postgres";
@@ -760,9 +1069,10 @@ ALTER TABLE "public"."target" OWNER TO "postgres";
 CREATE TABLE IF NOT EXISTS "public"."team_member" (
     "id" "uuid" NOT NULL,
     "name" "text" NOT NULL,
-    "role" character(1) DEFAULT NULL::"bpchar",
+    "role" "public"."role_enum",
     "email" "text",
-    "last_sign_in_at" timestamp with time zone
+    "last_sign_in_at" timestamp with time zone,
+    "service" boolean DEFAULT false NOT NULL
 );
 
 ALTER TABLE "public"."team_member" OWNER TO "postgres";
@@ -807,36 +1117,68 @@ CREATE OR REPLACE VIEW "public"."my_case" AS
     "a"."last_session_by",
     "a"."last_session_by_name",
     "a"."handlers",
+    "a"."gls",
     "a"."student_first_name",
     "a"."student_last_name",
     "a"."background",
-    "a"."student_other_name"
+    "a"."student_other_name",
+    "a"."case_no"
    FROM ("public"."case" "a"
      JOIN "public"."case_handler" "b" ON (("a"."id" = "b"."case_id")))
   WHERE ("b"."user_id" = "auth"."uid"());
 
 ALTER TABLE "public"."my_case" OWNER TO "postgres";
 
+CREATE TABLE IF NOT EXISTS "public"."page" (
+    "id" bigint NOT NULL,
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "created_by" "uuid",
+    "created_by_name" "text",
+    "updated_at" timestamp with time zone DEFAULT "now"(),
+    "updated_by" "uuid",
+    "updated_by_name" "text",
+    "title" "text",
+    "content" "text"
+);
+
+ALTER TABLE "public"."page" OWNER TO "postgres";
+
+ALTER TABLE "public"."page" ALTER COLUMN "id" ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME "public"."page_id_seq"
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+CREATE OR REPLACE VIEW "public"."page_oplog" AS
+ SELECT "rv"."id",
+    "rv"."record_id",
+    "rv"."old_record_id",
+    "rv"."op",
+    "rv"."ts",
+    "rv"."record",
+    "rv"."old_record",
+    "rv"."auth_uid",
+    "rv"."auth_role",
+    "tm"."name" AS "actor",
+    "rv"."table_name"
+   FROM ("audit"."record_version" "rv"
+     LEFT JOIN "public"."team_member" "tm" ON (("rv"."auth_uid" = "tm"."id")))
+  WHERE ("rv"."table_oid" = ('"public"."page"'::"regclass")::"oid");
+
+ALTER TABLE "public"."page_oplog" OWNER TO "postgres";
+
 CREATE TABLE IF NOT EXISTS "public"."pending_member" (
     "id" "text" NOT NULL,
     "name" "text" NOT NULL,
-    "role" character(1) DEFAULT 'B'::"bpchar",
+    "role" "public"."role_enum",
     "invited_at" timestamp with time zone DEFAULT "now"() NOT NULL,
     "activated_at" timestamp with time zone
 );
 
 ALTER TABLE "public"."pending_member" OWNER TO "postgres";
-
-CREATE TABLE IF NOT EXISTS "public"."profile" (
-    "case_id" bigint NOT NULL,
-    "created_at" timestamp with time zone DEFAULT "now"(),
-    "date_of_birth" "date",
-    "chinese_name" "text",
-    "gender" character(1),
-    CONSTRAINT "profile_gender_check" CHECK (("gender" = ANY (ARRAY['M'::"bpchar", 'F'::"bpchar", 'U'::"bpchar"])))
-);
-
-ALTER TABLE "public"."profile" OWNER TO "postgres";
 
 CREATE TABLE IF NOT EXISTS "public"."progress_note_attachment" (
     "id" "uuid" NOT NULL,
@@ -859,6 +1201,31 @@ ALTER TABLE "public"."progress_note" ALTER COLUMN "id" ADD GENERATED BY DEFAULT 
     CACHE 1
 );
 
+CREATE TABLE IF NOT EXISTS "public"."remark" (
+    "id" bigint NOT NULL,
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "original_created_at" timestamp with time zone NOT NULL,
+    "original_created_by" "text" NOT NULL,
+    "original_updated_at" timestamp with time zone NOT NULL,
+    "student_no" "text" NOT NULL,
+    "remark_level" smallint NOT NULL,
+    "category" "text" NOT NULL,
+    "content" "text",
+    "attachment" "text",
+    "dms_json" "jsonb"
+);
+
+ALTER TABLE "public"."remark" OWNER TO "postgres";
+
+ALTER TABLE "public"."remark" ALTER COLUMN "id" ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME "public"."remark_id_seq"
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
 ALTER TABLE "public"."reminder" ALTER COLUMN "id" ADD GENERATED BY DEFAULT AS IDENTITY (
     SEQUENCE NAME "public"."reminder_id_seq"
     START WITH 1
@@ -868,8 +1235,67 @@ ALTER TABLE "public"."reminder" ALTER COLUMN "id" ADD GENERATED BY DEFAULT AS ID
     CACHE 1
 );
 
+CREATE TABLE IF NOT EXISTS "public"."role_permission" (
+    "role" "public"."role_enum" NOT NULL,
+    "permission" "public"."permission_enum" NOT NULL
+);
+
+ALTER TABLE "public"."role_permission" OWNER TO "postgres";
+
+CREATE TABLE IF NOT EXISTS "public"."safeguarding_note" (
+    "id" bigint NOT NULL,
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "created_by" "uuid",
+    "created_by_name" "text",
+    "updated_at" timestamp with time zone,
+    "updated_by" "uuid",
+    "updated_by_name" "text",
+    "content" "text" DEFAULT ''::"text" NOT NULL,
+    "case_id" bigint
+);
+
+ALTER TABLE "public"."safeguarding_note" OWNER TO "postgres";
+
+ALTER TABLE "public"."safeguarding_note" ALTER COLUMN "id" ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME "public"."safeguarding_note_id_seq"
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
 ALTER TABLE "public"."session" ALTER COLUMN "id" ADD GENERATED BY DEFAULT AS IDENTITY (
     SEQUENCE NAME "public"."session_id_seq"
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+CREATE TABLE IF NOT EXISTS "public"."specialist" (
+    "id" bigint NOT NULL,
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "created_by" "uuid",
+    "created_by_name" "text",
+    "updated_at" timestamp with time zone,
+    "updated_by" "uuid",
+    "updated_by_name" "text",
+    "name" "text" DEFAULT ''::"text" NOT NULL,
+    "first_name" "text" DEFAULT ''::"text" NOT NULL,
+    "last_name" "text" DEFAULT ''::"text" NOT NULL,
+    "organization" "text" DEFAULT ''::"text" NOT NULL,
+    "contact_number" "text" DEFAULT ''::"text" NOT NULL,
+    "website" "text" DEFAULT ''::"text" NOT NULL,
+    "type" "public"."specialist_enum" NOT NULL,
+    "type_others" "text" DEFAULT ''::"text" NOT NULL
+);
+
+ALTER TABLE "public"."specialist" OWNER TO "postgres";
+
+ALTER TABLE "public"."specialist" ALTER COLUMN "id" ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME "public"."specialist_id_seq"
     START WITH 1
     INCREMENT BY 1
     NO MINVALUE
@@ -909,17 +1335,20 @@ ALTER TABLE ONLY "audit"."record_version" ALTER COLUMN "id" SET DEFAULT "nextval
 ALTER TABLE ONLY "audit"."record_version"
     ADD CONSTRAINT "record_version_pkey" PRIMARY KEY ("id");
 
+ALTER TABLE ONLY "public"."case_gls"
+    ADD CONSTRAINT "case_gls_pkey" PRIMARY KEY ("case_id", "user_id");
+
 ALTER TABLE ONLY "public"."case_handler"
     ADD CONSTRAINT "case_handler_pkey" PRIMARY KEY ("case_id", "user_id");
 
 ALTER TABLE ONLY "public"."case"
     ADD CONSTRAINT "case_pkey" PRIMARY KEY ("id");
 
+ALTER TABLE ONLY "public"."page"
+    ADD CONSTRAINT "page_pkey" PRIMARY KEY ("id");
+
 ALTER TABLE ONLY "public"."pending_member"
     ADD CONSTRAINT "pending_member_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE ONLY "public"."profile"
-    ADD CONSTRAINT "profile_pkey" PRIMARY KEY ("case_id");
 
 ALTER TABLE ONLY "public"."progress_note_attachment"
     ADD CONSTRAINT "progress_note_attachment_pkey" PRIMARY KEY ("id");
@@ -927,11 +1356,26 @@ ALTER TABLE ONLY "public"."progress_note_attachment"
 ALTER TABLE ONLY "public"."progress_note"
     ADD CONSTRAINT "progress_note_pkey" PRIMARY KEY ("id");
 
+ALTER TABLE ONLY "public"."remark"
+    ADD CONSTRAINT "remark_pkey" PRIMARY KEY ("id");
+
 ALTER TABLE ONLY "public"."reminder"
     ADD CONSTRAINT "reminder_pkey" PRIMARY KEY ("id");
 
+ALTER TABLE ONLY "public"."role_permission"
+    ADD CONSTRAINT "role_permission_pkey" PRIMARY KEY ("role", "permission");
+
+ALTER TABLE ONLY "public"."safeguarding_note"
+    ADD CONSTRAINT "safeguarding_note_pkey" PRIMARY KEY ("id");
+
 ALTER TABLE ONLY "public"."session"
     ADD CONSTRAINT "session_pkey" PRIMARY KEY ("id");
+
+ALTER TABLE ONLY "public"."specialist"
+    ADD CONSTRAINT "specialist_pkey" PRIMARY KEY ("id");
+
+ALTER TABLE ONLY "public"."case"
+    ADD CONSTRAINT "student_no_unique" UNIQUE ("student_no");
 
 ALTER TABLE ONLY "public"."target"
     ADD CONSTRAINT "target_pkey" PRIMARY KEY ("id");
@@ -953,7 +1397,7 @@ CREATE OR REPLACE TRIGGER "audit_i_u_d" AFTER INSERT OR DELETE OR UPDATE ON "pub
 
 CREATE OR REPLACE TRIGGER "audit_i_u_d" AFTER INSERT OR DELETE OR UPDATE ON "public"."case_handler" FOR EACH ROW EXECUTE FUNCTION "audit"."insert_update_delete_trigger"();
 
-CREATE OR REPLACE TRIGGER "audit_i_u_d" AFTER INSERT OR DELETE OR UPDATE ON "public"."profile" FOR EACH ROW EXECUTE FUNCTION "audit"."insert_update_delete_trigger"();
+CREATE OR REPLACE TRIGGER "audit_i_u_d" AFTER INSERT OR DELETE OR UPDATE ON "public"."page" FOR EACH ROW EXECUTE FUNCTION "audit"."insert_update_delete_trigger"();
 
 CREATE OR REPLACE TRIGGER "audit_i_u_d" AFTER INSERT OR DELETE OR UPDATE ON "public"."progress_note" FOR EACH ROW EXECUTE FUNCTION "audit"."insert_update_delete_trigger"();
 
@@ -969,7 +1413,7 @@ CREATE OR REPLACE TRIGGER "audit_t" AFTER TRUNCATE ON "public"."case" FOR EACH S
 
 CREATE OR REPLACE TRIGGER "audit_t" AFTER TRUNCATE ON "public"."case_handler" FOR EACH STATEMENT EXECUTE FUNCTION "audit"."truncate_trigger"();
 
-CREATE OR REPLACE TRIGGER "audit_t" AFTER TRUNCATE ON "public"."profile" FOR EACH STATEMENT EXECUTE FUNCTION "audit"."truncate_trigger"();
+CREATE OR REPLACE TRIGGER "audit_t" AFTER TRUNCATE ON "public"."page" FOR EACH STATEMENT EXECUTE FUNCTION "audit"."truncate_trigger"();
 
 CREATE OR REPLACE TRIGGER "audit_t" AFTER TRUNCATE ON "public"."progress_note" FOR EACH STATEMENT EXECUTE FUNCTION "audit"."truncate_trigger"();
 
@@ -981,11 +1425,21 @@ CREATE OR REPLACE TRIGGER "audit_t" AFTER TRUNCATE ON "public"."target" FOR EACH
 
 CREATE OR REPLACE TRIGGER "audit_t" AFTER TRUNCATE ON "public"."team_member" FOR EACH STATEMENT EXECUTE FUNCTION "audit"."truncate_trigger"();
 
+CREATE OR REPLACE TRIGGER "case_gls_i_u_d" AFTER INSERT OR DELETE OR UPDATE ON "public"."case_gls" FOR EACH ROW EXECUTE FUNCTION "public"."trigger_set_case_gls"();
+
+CREATE OR REPLACE TRIGGER "case_handler_i_u_d" AFTER INSERT OR DELETE OR UPDATE ON "public"."case_handler" FOR EACH ROW EXECUTE FUNCTION "public"."trigger_set_handlers"();
+
 CREATE OR REPLACE TRIGGER "case_set_created_meta" BEFORE INSERT ON "public"."case" FOR EACH ROW EXECUTE FUNCTION "public"."trigger_set_created_meta"();
+
+CREATE OR REPLACE TRIGGER "case_set_created_meta" BEFORE INSERT ON "public"."specialist" FOR EACH ROW EXECUTE FUNCTION "public"."trigger_set_created_meta"();
 
 CREATE OR REPLACE TRIGGER "case_set_updated_meta" BEFORE INSERT OR UPDATE ON "public"."case" FOR EACH ROW EXECUTE FUNCTION "public"."trigger_set_updated_meta"();
 
-CREATE OR REPLACE TRIGGER "insert_target" AFTER INSERT ON "public"."case" FOR EACH ROW EXECUTE FUNCTION "public"."insert_into_target"();
+CREATE OR REPLACE TRIGGER "case_set_updated_meta" BEFORE INSERT OR UPDATE ON "public"."specialist" FOR EACH ROW EXECUTE FUNCTION "public"."trigger_set_updated_meta"();
+
+CREATE OR REPLACE TRIGGER "page_set_created_meta" BEFORE INSERT ON "public"."page" FOR EACH ROW EXECUTE FUNCTION "public"."trigger_set_created_meta"();
+
+CREATE OR REPLACE TRIGGER "page_set_updated_meta" BEFORE INSERT OR UPDATE ON "public"."page" FOR EACH ROW EXECUTE FUNCTION "public"."trigger_set_updated_meta"();
 
 CREATE OR REPLACE TRIGGER "progress_note_set_created_meta" BEFORE INSERT ON "public"."progress_note" FOR EACH ROW EXECUTE FUNCTION "public"."trigger_set_created_meta"();
 
@@ -995,17 +1449,17 @@ CREATE OR REPLACE TRIGGER "reminder_set_created_meta" BEFORE INSERT ON "public".
 
 CREATE OR REPLACE TRIGGER "reminder_set_updated_meta" BEFORE INSERT OR UPDATE ON "public"."reminder" FOR EACH ROW EXECUTE FUNCTION "public"."trigger_set_updated_meta"();
 
+CREATE OR REPLACE TRIGGER "safeguarding_note_set_created_meta" BEFORE INSERT ON "public"."safeguarding_note" FOR EACH ROW EXECUTE FUNCTION "public"."trigger_set_created_meta"();
+
+CREATE OR REPLACE TRIGGER "safeguarding_note_set_updated_meta" BEFORE INSERT OR UPDATE ON "public"."safeguarding_note" FOR EACH ROW EXECUTE FUNCTION "public"."trigger_set_updated_meta"();
+
 CREATE OR REPLACE TRIGGER "session_set_created_meta" BEFORE INSERT ON "public"."session" FOR EACH ROW EXECUTE FUNCTION "public"."trigger_set_created_meta"();
 
 CREATE OR REPLACE TRIGGER "session_set_updated_meta" BEFORE INSERT OR UPDATE ON "public"."session" FOR EACH ROW EXECUTE FUNCTION "public"."trigger_set_updated_meta"();
 
-CREATE OR REPLACE TRIGGER "set_handlers_after_delete" AFTER DELETE ON "public"."case_handler" FOR EACH ROW EXECUTE FUNCTION "public"."trigger_set_handlers"();
-
-CREATE OR REPLACE TRIGGER "set_handlers_after_insert" AFTER INSERT ON "public"."case_handler" FOR EACH ROW EXECUTE FUNCTION "public"."trigger_set_handlers"();
-
-CREATE OR REPLACE TRIGGER "set_handlers_after_update" AFTER UPDATE ON "public"."case_handler" FOR EACH ROW EXECUTE FUNCTION "public"."trigger_set_handlers"();
-
 CREATE OR REPLACE TRIGGER "set_main_handler_before_insert" BEFORE INSERT ON "public"."case_handler" FOR EACH ROW EXECUTE FUNCTION "public"."trigger_set_main_handler"();
+
+CREATE OR REPLACE TRIGGER "specialist_i_u" BEFORE INSERT OR UPDATE ON "public"."specialist" FOR EACH ROW EXECUTE FUNCTION "public"."update_specialist_name"();
 
 CREATE OR REPLACE TRIGGER "target_set_created_neta_on_create" BEFORE INSERT ON "public"."target" FOR EACH ROW EXECUTE FUNCTION "public"."trigger_set_created_meta"();
 
@@ -1039,8 +1493,11 @@ ALTER TABLE ONLY "public"."case"
 ALTER TABLE ONLY "public"."case"
     ADD CONSTRAINT "case_updated_by_fkey" FOREIGN KEY ("updated_by") REFERENCES "auth"."users"("id");
 
-ALTER TABLE ONLY "public"."profile"
-    ADD CONSTRAINT "profile_case_id_fkey" FOREIGN KEY ("case_id") REFERENCES "public"."case"("id") ON DELETE CASCADE;
+ALTER TABLE ONLY "public"."page"
+    ADD CONSTRAINT "page_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES "public"."team_member"("id");
+
+ALTER TABLE ONLY "public"."page"
+    ADD CONSTRAINT "page_updated_by_fkey" FOREIGN KEY ("updated_by") REFERENCES "public"."team_member"("id");
 
 ALTER TABLE ONLY "public"."progress_note_attachment"
     ADD CONSTRAINT "progress_note_attachment_case_id_fkey" FOREIGN KEY ("case_id") REFERENCES "public"."case"("id") ON UPDATE RESTRICT ON DELETE CASCADE;
@@ -1057,6 +1514,15 @@ ALTER TABLE ONLY "public"."progress_note"
 ALTER TABLE ONLY "public"."progress_note"
     ADD CONSTRAINT "progress_note_updated_by_fkey" FOREIGN KEY ("updated_by") REFERENCES "auth"."users"("id");
 
+ALTER TABLE ONLY "public"."case_gls"
+    ADD CONSTRAINT "public_case_gls_case_id_fkey" FOREIGN KEY ("case_id") REFERENCES "public"."case"("id") ON DELETE CASCADE;
+
+ALTER TABLE ONLY "public"."case_gls"
+    ADD CONSTRAINT "public_case_gls_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "auth"."users"("id") ON DELETE CASCADE;
+
+ALTER TABLE ONLY "public"."target"
+    ADD CONSTRAINT "public_target_case_id_fkey" FOREIGN KEY ("case_id") REFERENCES "public"."case"("id") ON DELETE CASCADE;
+
 ALTER TABLE ONLY "public"."reminder"
     ADD CONSTRAINT "reminder_case_id_fkey" FOREIGN KEY ("case_id") REFERENCES "public"."case"("id");
 
@@ -1068,6 +1534,15 @@ ALTER TABLE ONLY "public"."reminder"
 
 ALTER TABLE ONLY "public"."reminder"
     ADD CONSTRAINT "reminder_updated_by_fkey" FOREIGN KEY ("updated_by") REFERENCES "auth"."users"("id");
+
+ALTER TABLE ONLY "public"."safeguarding_note"
+    ADD CONSTRAINT "safeguarding_note_case_id_fkey" FOREIGN KEY ("case_id") REFERENCES "public"."case"("id") ON DELETE CASCADE;
+
+ALTER TABLE ONLY "public"."safeguarding_note"
+    ADD CONSTRAINT "safeguarding_note_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES "auth"."users"("id");
+
+ALTER TABLE ONLY "public"."safeguarding_note"
+    ADD CONSTRAINT "safeguarding_note_updated_by_fkey" FOREIGN KEY ("updated_by") REFERENCES "auth"."users"("id");
 
 ALTER TABLE ONLY "public"."session"
     ADD CONSTRAINT "session_case_id_fkey" FOREIGN KEY ("case_id") REFERENCES "public"."case"("id");
@@ -1087,11 +1562,14 @@ ALTER TABLE ONLY "public"."session"
 ALTER TABLE ONLY "public"."session"
     ADD CONSTRAINT "session_updated_by_fkey" FOREIGN KEY ("updated_by") REFERENCES "auth"."users"("id");
 
-ALTER TABLE ONLY "public"."target"
-    ADD CONSTRAINT "target_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES "auth"."users"("id");
+ALTER TABLE ONLY "public"."specialist"
+    ADD CONSTRAINT "specialist_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES "auth"."users"("id");
+
+ALTER TABLE ONLY "public"."specialist"
+    ADD CONSTRAINT "specialist_updated_by_fkey" FOREIGN KEY ("updated_by") REFERENCES "auth"."users"("id");
 
 ALTER TABLE ONLY "public"."target"
-    ADD CONSTRAINT "target_id_fkey" FOREIGN KEY ("id") REFERENCES "public"."case"("id") ON DELETE CASCADE;
+    ADD CONSTRAINT "target_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES "auth"."users"("id");
 
 ALTER TABLE ONLY "public"."target"
     ADD CONSTRAINT "target_updated_by_fkey" FOREIGN KEY ("updated_by") REFERENCES "auth"."users"("id");
@@ -1105,35 +1583,61 @@ ALTER TABLE "audit"."record_version" ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Disable delete" ON "public"."case" FOR DELETE USING (false);
 
-CREATE POLICY "Enable all operations for all users" ON "public"."profile" TO "authenticated" USING (true) WITH CHECK (true);
-
 CREATE POLICY "Enable all operations for authenticated users" ON "public"."progress_note_attachment" TO "authenticated" USING (true) WITH CHECK (true);
 
-CREATE POLICY "Enable all operations for authenticated users" ON "public"."target" TO "authenticated" USING (true) WITH CHECK (true);
+CREATE POLICY "Enable delete for allowed roles" ON "public"."case_gls" FOR DELETE TO "authenticated" USING ("public"."is_allowed"('case_handler:delete'::"public"."permission_enum"));
 
-CREATE POLICY "Enable all operations for managers" ON "public"."pending_member" TO "authenticated" USING ("public"."is_manager"()) WITH CHECK (true);
+CREATE POLICY "Enable delete for allowed roles" ON "public"."case_handler" FOR DELETE TO "authenticated" USING ("public"."is_allowed"('case_handler:delete'::"public"."permission_enum"));
 
-CREATE POLICY "Enable delete for creator and managers" ON "public"."progress_note" FOR DELETE TO "authenticated" USING ((("auth"."uid"() = "created_by") OR "public"."is_manager"()));
+CREATE POLICY "Enable delete for allowed roles" ON "public"."pending_member" FOR DELETE TO "authenticated" USING ("public"."is_allowed"('pending_member:delete'::"public"."permission_enum"));
 
-CREATE POLICY "Enable delete for creator and managers" ON "public"."reminder" FOR DELETE TO "authenticated" USING ((("auth"."uid"() = "created_by") OR "public"."is_manager"()));
+CREATE POLICY "Enable delete for creator" ON "public"."safeguarding_note" FOR DELETE TO "authenticated" USING ("public"."is_creator"("created_by"));
 
-CREATE POLICY "Enable delete for creator and managers" ON "public"."session" FOR DELETE TO "authenticated" USING ((("auth"."uid"() = "created_by") OR "public"."is_manager"()));
+CREATE POLICY "Enable delete for creator and allowed roles" ON "public"."page" FOR DELETE TO "authenticated" USING (("public"."is_creator"("created_by") OR "public"."is_allowed"('page:delete'::"public"."permission_enum")));
 
-CREATE POLICY "Enable insert for all users" ON "public"."case" FOR INSERT TO "authenticated" WITH CHECK (true);
+CREATE POLICY "Enable delete for creator and allowed roles" ON "public"."progress_note" FOR DELETE TO "authenticated" USING (("public"."is_creator"("created_by") OR "public"."is_allowed"('progress_note:delete'::"public"."permission_enum")));
 
-CREATE POLICY "Enable insert for all users" ON "public"."progress_note" FOR INSERT TO "authenticated" WITH CHECK (true);
+CREATE POLICY "Enable delete for creator and allowed roles" ON "public"."reminder" FOR DELETE TO "authenticated" USING (("public"."is_creator"("created_by") OR "public"."is_allowed"('reminder:delete'::"public"."permission_enum")));
 
-CREATE POLICY "Enable insert for all users" ON "public"."reminder" FOR INSERT TO "authenticated" WITH CHECK (true);
+CREATE POLICY "Enable delete for creator and allowed roles" ON "public"."session" FOR DELETE TO "authenticated" USING (("public"."is_creator"("created_by") OR "public"."is_allowed"('session:delete'::"public"."permission_enum")));
 
-CREATE POLICY "Enable insert for all users" ON "public"."session" FOR INSERT TO "authenticated" WITH CHECK (true);
+CREATE POLICY "Enable delete for creator and allowed roles" ON "public"."specialist" FOR DELETE TO "authenticated" USING (("public"."is_creator"("created_by") OR "public"."is_allowed"('specialist:delete'::"public"."permission_enum")));
+
+CREATE POLICY "Enable delete for creator and allowed roles" ON "public"."target" FOR DELETE TO "authenticated" USING (("public"."is_creator"("created_by") OR "public"."is_allowed"('target:delete'::"public"."permission_enum")));
+
+CREATE POLICY "Enable insert for allowed roles" ON "public"."case" FOR INSERT TO "authenticated" WITH CHECK ("public"."is_allowed"('case:create'::"public"."permission_enum"));
+
+CREATE POLICY "Enable insert for allowed roles" ON "public"."case_gls" FOR INSERT TO "authenticated" WITH CHECK ("public"."is_allowed"('case_handler:create'::"public"."permission_enum"));
+
+CREATE POLICY "Enable insert for allowed roles" ON "public"."case_handler" FOR INSERT TO "authenticated" WITH CHECK ("public"."is_allowed"('case_handler:create'::"public"."permission_enum"));
+
+CREATE POLICY "Enable insert for allowed roles" ON "public"."page" FOR INSERT TO "authenticated" WITH CHECK ("public"."is_allowed"('page:create'::"public"."permission_enum"));
+
+CREATE POLICY "Enable insert for allowed roles" ON "public"."pending_member" FOR INSERT TO "authenticated" WITH CHECK ("public"."is_allowed"('pending_member:create'::"public"."permission_enum"));
+
+CREATE POLICY "Enable insert for allowed roles" ON "public"."progress_note" FOR INSERT TO "authenticated" WITH CHECK ("public"."is_allowed"('progress_note:create'::"public"."permission_enum"));
+
+CREATE POLICY "Enable insert for allowed roles" ON "public"."reminder" FOR INSERT TO "authenticated" WITH CHECK ("public"."is_allowed"('reminder:create'::"public"."permission_enum"));
+
+CREATE POLICY "Enable insert for allowed roles" ON "public"."safeguarding_note" FOR INSERT TO "authenticated" WITH CHECK ("public"."is_allowed"('safeguarding_note:create'::"public"."permission_enum"));
+
+CREATE POLICY "Enable insert for allowed roles" ON "public"."session" FOR INSERT TO "authenticated" WITH CHECK ("public"."is_allowed"('session:create'::"public"."permission_enum"));
+
+CREATE POLICY "Enable insert for allowed roles" ON "public"."specialist" FOR INSERT TO "authenticated" WITH CHECK ("public"."is_allowed"('specialist:create'::"public"."permission_enum"));
+
+CREATE POLICY "Enable insert for allowed roles" ON "public"."target" FOR INSERT TO "authenticated" WITH CHECK ("public"."is_allowed"('target:create'::"public"."permission_enum"));
 
 CREATE POLICY "Enable insert for service_role" ON "public"."team_member" FOR INSERT TO "service_role" WITH CHECK (true);
 
-CREATE POLICY "Enable read access for all users" ON "public"."case_handler" TO "authenticated" USING (true) WITH CHECK (true);
-
-CREATE POLICY "Enable read for authenticated users" ON "public"."team_member" FOR SELECT TO "authenticated", "anon", "service_role" USING (true);
+CREATE POLICY "Enable read access for authenticated" ON "public"."role_permission" FOR SELECT TO "authenticated" USING (true);
 
 CREATE POLICY "Enable select for all users" ON "public"."case" FOR SELECT TO "authenticated" USING (true);
+
+CREATE POLICY "Enable select for all users" ON "public"."case_gls" FOR SELECT TO "authenticated" USING (true);
+
+CREATE POLICY "Enable select for all users" ON "public"."case_handler" FOR SELECT TO "authenticated" USING (true);
+
+CREATE POLICY "Enable select for all users" ON "public"."page" FOR SELECT TO "authenticated" USING (true);
 
 CREATE POLICY "Enable select for all users" ON "public"."progress_note" FOR SELECT TO "authenticated" USING (true);
 
@@ -1141,296 +1645,95 @@ CREATE POLICY "Enable select for all users" ON "public"."reminder" FOR SELECT TO
 
 CREATE POLICY "Enable select for all users" ON "public"."session" FOR SELECT TO "authenticated" USING (true);
 
-CREATE POLICY "Enable update for authenticated manager" ON "public"."team_member" FOR UPDATE TO "authenticated" USING (true) WITH CHECK (("public"."is_manager"() OR ("auth"."uid"() = "id")));
+CREATE POLICY "Enable select for all users" ON "public"."specialist" FOR SELECT TO "authenticated" USING (true);
 
-CREATE POLICY "Enable update for creator and managers" ON "public"."case" FOR UPDATE TO "authenticated" USING (true) WITH CHECK ((("auth"."uid"() = "created_by") OR "public"."is_manager"()));
+CREATE POLICY "Enable select for all users" ON "public"."target" FOR SELECT TO "authenticated" USING (true);
 
-CREATE POLICY "Enable update for creator or managers" ON "public"."progress_note" FOR UPDATE TO "authenticated" USING (true) WITH CHECK ((("auth"."uid"() = "created_by") OR "public"."is_manager"()));
+CREATE POLICY "Enable select for allowed roles" ON "public"."pending_member" FOR SELECT TO "authenticated" USING ("public"."is_allowed"('pending_member:list'::"public"."permission_enum"));
 
-CREATE POLICY "Enable update for creator or managers" ON "public"."reminder" FOR UPDATE TO "authenticated" USING (true) WITH CHECK ((("auth"."uid"() = "created_by") OR "public"."is_manager"()));
+CREATE POLICY "Enable select for allowed roles" ON "public"."remark" FOR SELECT TO "authenticated" USING ("public"."is_allowed"('remark:list'::"public"."permission_enum"));
 
-CREATE POLICY "Enable update for creator or managers" ON "public"."session" FOR UPDATE USING (true) WITH CHECK ((("auth"."uid"() = "created_by") OR "public"."is_manager"()));
+CREATE POLICY "Enable select for authenticated users" ON "public"."team_member" FOR SELECT TO "authenticated", "service_role" USING ((("service" = false) OR ("id" = "auth"."uid"())));
+
+CREATE POLICY "Enable select for creator and allowed roles" ON "public"."safeguarding_note" FOR SELECT TO "authenticated" USING (
+CASE
+    WHEN "public"."is_allowed"('safeguarding_note:read_all'::"public"."permission_enum") THEN true
+    ELSE "public"."is_creator"("created_by")
+END);
+
+CREATE POLICY "Enable supabase_auth_admin to read user roles" ON "public"."team_member" FOR SELECT TO "supabase_auth_admin" USING (true);
+
+CREATE POLICY "Enable update for allowed roles" ON "public"."case_gls" FOR UPDATE TO "authenticated" USING (true) WITH CHECK ("public"."is_allowed"('case_handler:edit'::"public"."permission_enum"));
+
+CREATE POLICY "Enable update for allowed roles" ON "public"."case_handler" FOR UPDATE TO "authenticated" USING (true) WITH CHECK ("public"."is_allowed"('case_handler:edit'::"public"."permission_enum"));
+
+CREATE POLICY "Enable update for allowed roles" ON "public"."pending_member" FOR UPDATE TO "authenticated" USING (true) WITH CHECK ("public"."is_allowed"('pending_member:edit'::"public"."permission_enum"));
+
+CREATE POLICY "Enable update for allowed roles" ON "public"."team_member" FOR UPDATE TO "authenticated" USING (true) WITH CHECK ("public"."is_allowed"('team_member:edit'::"public"."permission_enum"));
+
+CREATE POLICY "Enable update for creator" ON "public"."safeguarding_note" FOR UPDATE USING (true) WITH CHECK ("public"."is_creator"("created_by"));
+
+CREATE POLICY "Enable update for creator and allowed roles" ON "public"."case" FOR UPDATE TO "authenticated" USING (true) WITH CHECK (("public"."is_creator"("created_by") OR "public"."is_allowed"('case:edit'::"public"."permission_enum")));
+
+CREATE POLICY "Enable update for creator and allowed roles" ON "public"."page" FOR UPDATE TO "authenticated" USING (true) WITH CHECK (("public"."is_creator"("created_by") OR "public"."is_allowed"('page:edit'::"public"."permission_enum")));
+
+CREATE POLICY "Enable update for creator and allowed roles" ON "public"."progress_note" FOR UPDATE TO "authenticated" USING (true) WITH CHECK (("public"."is_creator"("created_by") OR "public"."is_allowed"('progress_note:edit'::"public"."permission_enum")));
+
+CREATE POLICY "Enable update for creator and allowed roles" ON "public"."reminder" FOR UPDATE TO "authenticated" USING (true) WITH CHECK (("public"."is_creator"("created_by") OR "public"."is_allowed"('reminder:edit'::"public"."permission_enum")));
+
+CREATE POLICY "Enable update for creator and allowed roles" ON "public"."session" FOR UPDATE TO "authenticated" USING (true) WITH CHECK (("public"."is_creator"("created_by") OR "public"."is_allowed"('session:edit'::"public"."permission_enum")));
+
+CREATE POLICY "Enable update for creator and allowed roles" ON "public"."specialist" FOR UPDATE TO "authenticated" USING (true) WITH CHECK (("public"."is_creator"("created_by") OR "public"."is_allowed"('specialist:edit'::"public"."permission_enum")));
+
+CREATE POLICY "Enable update for creator and allowed roles" ON "public"."target" FOR UPDATE TO "authenticated" USING (true) WITH CHECK (("public"."is_creator"("created_by") OR "public"."is_allowed"('target:edit'::"public"."permission_enum")));
 
 ALTER TABLE "public"."case" ENABLE ROW LEVEL SECURITY;
 
+ALTER TABLE "public"."case_gls" ENABLE ROW LEVEL SECURITY;
+
 ALTER TABLE "public"."case_handler" ENABLE ROW LEVEL SECURITY;
 
-ALTER TABLE "public"."pending_member" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "public"."page" ENABLE ROW LEVEL SECURITY;
 
-ALTER TABLE "public"."profile" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "public"."pending_member" ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE "public"."progress_note" ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE "public"."progress_note_attachment" ENABLE ROW LEVEL SECURITY;
 
+ALTER TABLE "public"."remark" ENABLE ROW LEVEL SECURITY;
+
 ALTER TABLE "public"."reminder" ENABLE ROW LEVEL SECURITY;
 
+ALTER TABLE "public"."role_permission" ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE "public"."safeguarding_note" ENABLE ROW LEVEL SECURITY;
+
 ALTER TABLE "public"."session" ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE "public"."specialist" ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE "public"."target" ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE "public"."team_member" ENABLE ROW LEVEL SECURITY;
 
-GRANT USAGE ON SCHEMA "net" TO "supabase_functions_admin";
-GRANT USAGE ON SCHEMA "net" TO "anon";
-GRANT USAGE ON SCHEMA "net" TO "authenticated";
-GRANT USAGE ON SCHEMA "net" TO "service_role";
-
 GRANT USAGE ON SCHEMA "public" TO "postgres";
 GRANT USAGE ON SCHEMA "public" TO "anon";
 GRANT USAGE ON SCHEMA "public" TO "authenticated";
 GRANT USAGE ON SCHEMA "public" TO "service_role";
+GRANT USAGE ON SCHEMA "public" TO "supabase_auth_admin";
 
-REVOKE ALL ON FUNCTION "extensions"."algorithm_sign"("signables" "text", "secret" "text", "algorithm" "text") FROM "postgres";
-GRANT ALL ON FUNCTION "extensions"."algorithm_sign"("signables" "text", "secret" "text", "algorithm" "text") TO "postgres" WITH GRANT OPTION;
-GRANT ALL ON FUNCTION "extensions"."algorithm_sign"("signables" "text", "secret" "text", "algorithm" "text") TO "dashboard_user";
-
-REVOKE ALL ON FUNCTION "extensions"."armor"("bytea") FROM "postgres";
-GRANT ALL ON FUNCTION "extensions"."armor"("bytea") TO "postgres" WITH GRANT OPTION;
-GRANT ALL ON FUNCTION "extensions"."armor"("bytea") TO "dashboard_user";
-
-REVOKE ALL ON FUNCTION "extensions"."armor"("bytea", "text"[], "text"[]) FROM "postgres";
-GRANT ALL ON FUNCTION "extensions"."armor"("bytea", "text"[], "text"[]) TO "postgres" WITH GRANT OPTION;
-GRANT ALL ON FUNCTION "extensions"."armor"("bytea", "text"[], "text"[]) TO "dashboard_user";
-
-REVOKE ALL ON FUNCTION "extensions"."crypt"("text", "text") FROM "postgres";
-GRANT ALL ON FUNCTION "extensions"."crypt"("text", "text") TO "postgres" WITH GRANT OPTION;
-GRANT ALL ON FUNCTION "extensions"."crypt"("text", "text") TO "dashboard_user";
-
-REVOKE ALL ON FUNCTION "extensions"."dearmor"("text") FROM "postgres";
-GRANT ALL ON FUNCTION "extensions"."dearmor"("text") TO "postgres" WITH GRANT OPTION;
-GRANT ALL ON FUNCTION "extensions"."dearmor"("text") TO "dashboard_user";
-
-REVOKE ALL ON FUNCTION "extensions"."decrypt"("bytea", "bytea", "text") FROM "postgres";
-GRANT ALL ON FUNCTION "extensions"."decrypt"("bytea", "bytea", "text") TO "postgres" WITH GRANT OPTION;
-GRANT ALL ON FUNCTION "extensions"."decrypt"("bytea", "bytea", "text") TO "dashboard_user";
-
-REVOKE ALL ON FUNCTION "extensions"."decrypt_iv"("bytea", "bytea", "bytea", "text") FROM "postgres";
-GRANT ALL ON FUNCTION "extensions"."decrypt_iv"("bytea", "bytea", "bytea", "text") TO "postgres" WITH GRANT OPTION;
-GRANT ALL ON FUNCTION "extensions"."decrypt_iv"("bytea", "bytea", "bytea", "text") TO "dashboard_user";
-
-REVOKE ALL ON FUNCTION "extensions"."digest"("bytea", "text") FROM "postgres";
-GRANT ALL ON FUNCTION "extensions"."digest"("bytea", "text") TO "postgres" WITH GRANT OPTION;
-GRANT ALL ON FUNCTION "extensions"."digest"("bytea", "text") TO "dashboard_user";
-
-REVOKE ALL ON FUNCTION "extensions"."digest"("text", "text") FROM "postgres";
-GRANT ALL ON FUNCTION "extensions"."digest"("text", "text") TO "postgres" WITH GRANT OPTION;
-GRANT ALL ON FUNCTION "extensions"."digest"("text", "text") TO "dashboard_user";
-
-REVOKE ALL ON FUNCTION "extensions"."encrypt"("bytea", "bytea", "text") FROM "postgres";
-GRANT ALL ON FUNCTION "extensions"."encrypt"("bytea", "bytea", "text") TO "postgres" WITH GRANT OPTION;
-GRANT ALL ON FUNCTION "extensions"."encrypt"("bytea", "bytea", "text") TO "dashboard_user";
-
-REVOKE ALL ON FUNCTION "extensions"."encrypt_iv"("bytea", "bytea", "bytea", "text") FROM "postgres";
-GRANT ALL ON FUNCTION "extensions"."encrypt_iv"("bytea", "bytea", "bytea", "text") TO "postgres" WITH GRANT OPTION;
-GRANT ALL ON FUNCTION "extensions"."encrypt_iv"("bytea", "bytea", "bytea", "text") TO "dashboard_user";
-
-REVOKE ALL ON FUNCTION "extensions"."gen_random_bytes"(integer) FROM "postgres";
-GRANT ALL ON FUNCTION "extensions"."gen_random_bytes"(integer) TO "postgres" WITH GRANT OPTION;
-GRANT ALL ON FUNCTION "extensions"."gen_random_bytes"(integer) TO "dashboard_user";
-
-REVOKE ALL ON FUNCTION "extensions"."gen_random_uuid"() FROM "postgres";
-GRANT ALL ON FUNCTION "extensions"."gen_random_uuid"() TO "postgres" WITH GRANT OPTION;
-GRANT ALL ON FUNCTION "extensions"."gen_random_uuid"() TO "dashboard_user";
-
-REVOKE ALL ON FUNCTION "extensions"."gen_salt"("text") FROM "postgres";
-GRANT ALL ON FUNCTION "extensions"."gen_salt"("text") TO "postgres" WITH GRANT OPTION;
-GRANT ALL ON FUNCTION "extensions"."gen_salt"("text") TO "dashboard_user";
-
-REVOKE ALL ON FUNCTION "extensions"."gen_salt"("text", integer) FROM "postgres";
-GRANT ALL ON FUNCTION "extensions"."gen_salt"("text", integer) TO "postgres" WITH GRANT OPTION;
-GRANT ALL ON FUNCTION "extensions"."gen_salt"("text", integer) TO "dashboard_user";
-
-REVOKE ALL ON FUNCTION "extensions"."hmac"("bytea", "bytea", "text") FROM "postgres";
-GRANT ALL ON FUNCTION "extensions"."hmac"("bytea", "bytea", "text") TO "postgres" WITH GRANT OPTION;
-GRANT ALL ON FUNCTION "extensions"."hmac"("bytea", "bytea", "text") TO "dashboard_user";
-
-REVOKE ALL ON FUNCTION "extensions"."hmac"("text", "text", "text") FROM "postgres";
-GRANT ALL ON FUNCTION "extensions"."hmac"("text", "text", "text") TO "postgres" WITH GRANT OPTION;
-GRANT ALL ON FUNCTION "extensions"."hmac"("text", "text", "text") TO "dashboard_user";
-
-GRANT ALL ON FUNCTION "extensions"."pg_stat_statements"("showtext" boolean, OUT "userid" "oid", OUT "dbid" "oid", OUT "toplevel" boolean, OUT "queryid" bigint, OUT "query" "text", OUT "plans" bigint, OUT "total_plan_time" double precision, OUT "min_plan_time" double precision, OUT "max_plan_time" double precision, OUT "mean_plan_time" double precision, OUT "stddev_plan_time" double precision, OUT "calls" bigint, OUT "total_exec_time" double precision, OUT "min_exec_time" double precision, OUT "max_exec_time" double precision, OUT "mean_exec_time" double precision, OUT "stddev_exec_time" double precision, OUT "rows" bigint, OUT "shared_blks_hit" bigint, OUT "shared_blks_read" bigint, OUT "shared_blks_dirtied" bigint, OUT "shared_blks_written" bigint, OUT "local_blks_hit" bigint, OUT "local_blks_read" bigint, OUT "local_blks_dirtied" bigint, OUT "local_blks_written" bigint, OUT "temp_blks_read" bigint, OUT "temp_blks_written" bigint, OUT "blk_read_time" double precision, OUT "blk_write_time" double precision, OUT "temp_blk_read_time" double precision, OUT "temp_blk_write_time" double precision, OUT "wal_records" bigint, OUT "wal_fpi" bigint, OUT "wal_bytes" numeric, OUT "jit_functions" bigint, OUT "jit_generation_time" double precision, OUT "jit_inlining_count" bigint, OUT "jit_inlining_time" double precision, OUT "jit_optimization_count" bigint, OUT "jit_optimization_time" double precision, OUT "jit_emission_count" bigint, OUT "jit_emission_time" double precision) TO "postgres" WITH GRANT OPTION;
-
-GRANT ALL ON FUNCTION "extensions"."pg_stat_statements_info"(OUT "dealloc" bigint, OUT "stats_reset" timestamp with time zone) TO "postgres" WITH GRANT OPTION;
-
-GRANT ALL ON FUNCTION "extensions"."pg_stat_statements_reset"("userid" "oid", "dbid" "oid", "queryid" bigint) TO "postgres" WITH GRANT OPTION;
-
-REVOKE ALL ON FUNCTION "extensions"."pgp_armor_headers"("text", OUT "key" "text", OUT "value" "text") FROM "postgres";
-GRANT ALL ON FUNCTION "extensions"."pgp_armor_headers"("text", OUT "key" "text", OUT "value" "text") TO "postgres" WITH GRANT OPTION;
-GRANT ALL ON FUNCTION "extensions"."pgp_armor_headers"("text", OUT "key" "text", OUT "value" "text") TO "dashboard_user";
-
-REVOKE ALL ON FUNCTION "extensions"."pgp_key_id"("bytea") FROM "postgres";
-GRANT ALL ON FUNCTION "extensions"."pgp_key_id"("bytea") TO "postgres" WITH GRANT OPTION;
-GRANT ALL ON FUNCTION "extensions"."pgp_key_id"("bytea") TO "dashboard_user";
-
-REVOKE ALL ON FUNCTION "extensions"."pgp_pub_decrypt"("bytea", "bytea") FROM "postgres";
-GRANT ALL ON FUNCTION "extensions"."pgp_pub_decrypt"("bytea", "bytea") TO "postgres" WITH GRANT OPTION;
-GRANT ALL ON FUNCTION "extensions"."pgp_pub_decrypt"("bytea", "bytea") TO "dashboard_user";
-
-REVOKE ALL ON FUNCTION "extensions"."pgp_pub_decrypt"("bytea", "bytea", "text") FROM "postgres";
-GRANT ALL ON FUNCTION "extensions"."pgp_pub_decrypt"("bytea", "bytea", "text") TO "postgres" WITH GRANT OPTION;
-GRANT ALL ON FUNCTION "extensions"."pgp_pub_decrypt"("bytea", "bytea", "text") TO "dashboard_user";
-
-REVOKE ALL ON FUNCTION "extensions"."pgp_pub_decrypt"("bytea", "bytea", "text", "text") FROM "postgres";
-GRANT ALL ON FUNCTION "extensions"."pgp_pub_decrypt"("bytea", "bytea", "text", "text") TO "postgres" WITH GRANT OPTION;
-GRANT ALL ON FUNCTION "extensions"."pgp_pub_decrypt"("bytea", "bytea", "text", "text") TO "dashboard_user";
-
-REVOKE ALL ON FUNCTION "extensions"."pgp_pub_decrypt_bytea"("bytea", "bytea") FROM "postgres";
-GRANT ALL ON FUNCTION "extensions"."pgp_pub_decrypt_bytea"("bytea", "bytea") TO "postgres" WITH GRANT OPTION;
-GRANT ALL ON FUNCTION "extensions"."pgp_pub_decrypt_bytea"("bytea", "bytea") TO "dashboard_user";
-
-REVOKE ALL ON FUNCTION "extensions"."pgp_pub_decrypt_bytea"("bytea", "bytea", "text") FROM "postgres";
-GRANT ALL ON FUNCTION "extensions"."pgp_pub_decrypt_bytea"("bytea", "bytea", "text") TO "postgres" WITH GRANT OPTION;
-GRANT ALL ON FUNCTION "extensions"."pgp_pub_decrypt_bytea"("bytea", "bytea", "text") TO "dashboard_user";
-
-REVOKE ALL ON FUNCTION "extensions"."pgp_pub_decrypt_bytea"("bytea", "bytea", "text", "text") FROM "postgres";
-GRANT ALL ON FUNCTION "extensions"."pgp_pub_decrypt_bytea"("bytea", "bytea", "text", "text") TO "postgres" WITH GRANT OPTION;
-GRANT ALL ON FUNCTION "extensions"."pgp_pub_decrypt_bytea"("bytea", "bytea", "text", "text") TO "dashboard_user";
-
-REVOKE ALL ON FUNCTION "extensions"."pgp_pub_encrypt"("text", "bytea") FROM "postgres";
-GRANT ALL ON FUNCTION "extensions"."pgp_pub_encrypt"("text", "bytea") TO "postgres" WITH GRANT OPTION;
-GRANT ALL ON FUNCTION "extensions"."pgp_pub_encrypt"("text", "bytea") TO "dashboard_user";
-
-REVOKE ALL ON FUNCTION "extensions"."pgp_pub_encrypt"("text", "bytea", "text") FROM "postgres";
-GRANT ALL ON FUNCTION "extensions"."pgp_pub_encrypt"("text", "bytea", "text") TO "postgres" WITH GRANT OPTION;
-GRANT ALL ON FUNCTION "extensions"."pgp_pub_encrypt"("text", "bytea", "text") TO "dashboard_user";
-
-REVOKE ALL ON FUNCTION "extensions"."pgp_pub_encrypt_bytea"("bytea", "bytea") FROM "postgres";
-GRANT ALL ON FUNCTION "extensions"."pgp_pub_encrypt_bytea"("bytea", "bytea") TO "postgres" WITH GRANT OPTION;
-GRANT ALL ON FUNCTION "extensions"."pgp_pub_encrypt_bytea"("bytea", "bytea") TO "dashboard_user";
-
-REVOKE ALL ON FUNCTION "extensions"."pgp_pub_encrypt_bytea"("bytea", "bytea", "text") FROM "postgres";
-GRANT ALL ON FUNCTION "extensions"."pgp_pub_encrypt_bytea"("bytea", "bytea", "text") TO "postgres" WITH GRANT OPTION;
-GRANT ALL ON FUNCTION "extensions"."pgp_pub_encrypt_bytea"("bytea", "bytea", "text") TO "dashboard_user";
-
-REVOKE ALL ON FUNCTION "extensions"."pgp_sym_decrypt"("bytea", "text") FROM "postgres";
-GRANT ALL ON FUNCTION "extensions"."pgp_sym_decrypt"("bytea", "text") TO "postgres" WITH GRANT OPTION;
-GRANT ALL ON FUNCTION "extensions"."pgp_sym_decrypt"("bytea", "text") TO "dashboard_user";
-
-REVOKE ALL ON FUNCTION "extensions"."pgp_sym_decrypt"("bytea", "text", "text") FROM "postgres";
-GRANT ALL ON FUNCTION "extensions"."pgp_sym_decrypt"("bytea", "text", "text") TO "postgres" WITH GRANT OPTION;
-GRANT ALL ON FUNCTION "extensions"."pgp_sym_decrypt"("bytea", "text", "text") TO "dashboard_user";
-
-REVOKE ALL ON FUNCTION "extensions"."pgp_sym_decrypt_bytea"("bytea", "text") FROM "postgres";
-GRANT ALL ON FUNCTION "extensions"."pgp_sym_decrypt_bytea"("bytea", "text") TO "postgres" WITH GRANT OPTION;
-GRANT ALL ON FUNCTION "extensions"."pgp_sym_decrypt_bytea"("bytea", "text") TO "dashboard_user";
-
-REVOKE ALL ON FUNCTION "extensions"."pgp_sym_decrypt_bytea"("bytea", "text", "text") FROM "postgres";
-GRANT ALL ON FUNCTION "extensions"."pgp_sym_decrypt_bytea"("bytea", "text", "text") TO "postgres" WITH GRANT OPTION;
-GRANT ALL ON FUNCTION "extensions"."pgp_sym_decrypt_bytea"("bytea", "text", "text") TO "dashboard_user";
-
-REVOKE ALL ON FUNCTION "extensions"."pgp_sym_encrypt"("text", "text") FROM "postgres";
-GRANT ALL ON FUNCTION "extensions"."pgp_sym_encrypt"("text", "text") TO "postgres" WITH GRANT OPTION;
-GRANT ALL ON FUNCTION "extensions"."pgp_sym_encrypt"("text", "text") TO "dashboard_user";
-
-REVOKE ALL ON FUNCTION "extensions"."pgp_sym_encrypt"("text", "text", "text") FROM "postgres";
-GRANT ALL ON FUNCTION "extensions"."pgp_sym_encrypt"("text", "text", "text") TO "postgres" WITH GRANT OPTION;
-GRANT ALL ON FUNCTION "extensions"."pgp_sym_encrypt"("text", "text", "text") TO "dashboard_user";
-
-REVOKE ALL ON FUNCTION "extensions"."pgp_sym_encrypt_bytea"("bytea", "text") FROM "postgres";
-GRANT ALL ON FUNCTION "extensions"."pgp_sym_encrypt_bytea"("bytea", "text") TO "postgres" WITH GRANT OPTION;
-GRANT ALL ON FUNCTION "extensions"."pgp_sym_encrypt_bytea"("bytea", "text") TO "dashboard_user";
-
-REVOKE ALL ON FUNCTION "extensions"."pgp_sym_encrypt_bytea"("bytea", "text", "text") FROM "postgres";
-GRANT ALL ON FUNCTION "extensions"."pgp_sym_encrypt_bytea"("bytea", "text", "text") TO "postgres" WITH GRANT OPTION;
-GRANT ALL ON FUNCTION "extensions"."pgp_sym_encrypt_bytea"("bytea", "text", "text") TO "dashboard_user";
-
-REVOKE ALL ON FUNCTION "extensions"."sign"("payload" "json", "secret" "text", "algorithm" "text") FROM "postgres";
-GRANT ALL ON FUNCTION "extensions"."sign"("payload" "json", "secret" "text", "algorithm" "text") TO "postgres" WITH GRANT OPTION;
-GRANT ALL ON FUNCTION "extensions"."sign"("payload" "json", "secret" "text", "algorithm" "text") TO "dashboard_user";
-
-REVOKE ALL ON FUNCTION "extensions"."try_cast_double"("inp" "text") FROM "postgres";
-GRANT ALL ON FUNCTION "extensions"."try_cast_double"("inp" "text") TO "postgres" WITH GRANT OPTION;
-GRANT ALL ON FUNCTION "extensions"."try_cast_double"("inp" "text") TO "dashboard_user";
-
-REVOKE ALL ON FUNCTION "extensions"."url_decode"("data" "text") FROM "postgres";
-GRANT ALL ON FUNCTION "extensions"."url_decode"("data" "text") TO "postgres" WITH GRANT OPTION;
-GRANT ALL ON FUNCTION "extensions"."url_decode"("data" "text") TO "dashboard_user";
-
-REVOKE ALL ON FUNCTION "extensions"."url_encode"("data" "bytea") FROM "postgres";
-GRANT ALL ON FUNCTION "extensions"."url_encode"("data" "bytea") TO "postgres" WITH GRANT OPTION;
-GRANT ALL ON FUNCTION "extensions"."url_encode"("data" "bytea") TO "dashboard_user";
-
-REVOKE ALL ON FUNCTION "extensions"."uuid_generate_v1"() FROM "postgres";
-GRANT ALL ON FUNCTION "extensions"."uuid_generate_v1"() TO "postgres" WITH GRANT OPTION;
-GRANT ALL ON FUNCTION "extensions"."uuid_generate_v1"() TO "dashboard_user";
-
-REVOKE ALL ON FUNCTION "extensions"."uuid_generate_v1mc"() FROM "postgres";
-GRANT ALL ON FUNCTION "extensions"."uuid_generate_v1mc"() TO "postgres" WITH GRANT OPTION;
-GRANT ALL ON FUNCTION "extensions"."uuid_generate_v1mc"() TO "dashboard_user";
-
-REVOKE ALL ON FUNCTION "extensions"."uuid_generate_v3"("namespace" "uuid", "name" "text") FROM "postgres";
-GRANT ALL ON FUNCTION "extensions"."uuid_generate_v3"("namespace" "uuid", "name" "text") TO "postgres" WITH GRANT OPTION;
-GRANT ALL ON FUNCTION "extensions"."uuid_generate_v3"("namespace" "uuid", "name" "text") TO "dashboard_user";
-
-REVOKE ALL ON FUNCTION "extensions"."uuid_generate_v4"() FROM "postgres";
-GRANT ALL ON FUNCTION "extensions"."uuid_generate_v4"() TO "postgres" WITH GRANT OPTION;
-GRANT ALL ON FUNCTION "extensions"."uuid_generate_v4"() TO "dashboard_user";
-
-REVOKE ALL ON FUNCTION "extensions"."uuid_generate_v5"("namespace" "uuid", "name" "text") FROM "postgres";
-GRANT ALL ON FUNCTION "extensions"."uuid_generate_v5"("namespace" "uuid", "name" "text") TO "postgres" WITH GRANT OPTION;
-GRANT ALL ON FUNCTION "extensions"."uuid_generate_v5"("namespace" "uuid", "name" "text") TO "dashboard_user";
-
-REVOKE ALL ON FUNCTION "extensions"."uuid_nil"() FROM "postgres";
-GRANT ALL ON FUNCTION "extensions"."uuid_nil"() TO "postgres" WITH GRANT OPTION;
-GRANT ALL ON FUNCTION "extensions"."uuid_nil"() TO "dashboard_user";
-
-REVOKE ALL ON FUNCTION "extensions"."uuid_ns_dns"() FROM "postgres";
-GRANT ALL ON FUNCTION "extensions"."uuid_ns_dns"() TO "postgres" WITH GRANT OPTION;
-GRANT ALL ON FUNCTION "extensions"."uuid_ns_dns"() TO "dashboard_user";
-
-REVOKE ALL ON FUNCTION "extensions"."uuid_ns_oid"() FROM "postgres";
-GRANT ALL ON FUNCTION "extensions"."uuid_ns_oid"() TO "postgres" WITH GRANT OPTION;
-GRANT ALL ON FUNCTION "extensions"."uuid_ns_oid"() TO "dashboard_user";
-
-REVOKE ALL ON FUNCTION "extensions"."uuid_ns_url"() FROM "postgres";
-GRANT ALL ON FUNCTION "extensions"."uuid_ns_url"() TO "postgres" WITH GRANT OPTION;
-GRANT ALL ON FUNCTION "extensions"."uuid_ns_url"() TO "dashboard_user";
-
-REVOKE ALL ON FUNCTION "extensions"."uuid_ns_x500"() FROM "postgres";
-GRANT ALL ON FUNCTION "extensions"."uuid_ns_x500"() TO "postgres" WITH GRANT OPTION;
-GRANT ALL ON FUNCTION "extensions"."uuid_ns_x500"() TO "dashboard_user";
-
-REVOKE ALL ON FUNCTION "extensions"."verify"("token" "text", "secret" "text", "algorithm" "text") FROM "postgres";
-GRANT ALL ON FUNCTION "extensions"."verify"("token" "text", "secret" "text", "algorithm" "text") TO "postgres" WITH GRANT OPTION;
-GRANT ALL ON FUNCTION "extensions"."verify"("token" "text", "secret" "text", "algorithm" "text") TO "dashboard_user";
-
-GRANT ALL ON FUNCTION "graphql"."comment_directive"("comment_" "text") TO "postgres";
-GRANT ALL ON FUNCTION "graphql"."comment_directive"("comment_" "text") TO "anon";
-GRANT ALL ON FUNCTION "graphql"."comment_directive"("comment_" "text") TO "authenticated";
-GRANT ALL ON FUNCTION "graphql"."comment_directive"("comment_" "text") TO "service_role";
-
-GRANT ALL ON FUNCTION "graphql"."exception"("message" "text") TO "postgres";
-GRANT ALL ON FUNCTION "graphql"."exception"("message" "text") TO "anon";
-GRANT ALL ON FUNCTION "graphql"."exception"("message" "text") TO "authenticated";
-GRANT ALL ON FUNCTION "graphql"."exception"("message" "text") TO "service_role";
-
-GRANT ALL ON FUNCTION "graphql_public"."graphql"("operationName" "text", "query" "text", "variables" "jsonb", "extensions" "jsonb") TO "postgres";
-GRANT ALL ON FUNCTION "graphql_public"."graphql"("operationName" "text", "query" "text", "variables" "jsonb", "extensions" "jsonb") TO "anon";
-GRANT ALL ON FUNCTION "graphql_public"."graphql"("operationName" "text", "query" "text", "variables" "jsonb", "extensions" "jsonb") TO "authenticated";
-GRANT ALL ON FUNCTION "graphql_public"."graphql"("operationName" "text", "query" "text", "variables" "jsonb", "extensions" "jsonb") TO "service_role";
-
-REVOKE ALL ON FUNCTION "net"."http_get"("url" "text", "params" "jsonb", "headers" "jsonb", "timeout_milliseconds" integer) FROM PUBLIC;
-GRANT ALL ON FUNCTION "net"."http_get"("url" "text", "params" "jsonb", "headers" "jsonb", "timeout_milliseconds" integer) TO "supabase_functions_admin";
-GRANT ALL ON FUNCTION "net"."http_get"("url" "text", "params" "jsonb", "headers" "jsonb", "timeout_milliseconds" integer) TO "anon";
-GRANT ALL ON FUNCTION "net"."http_get"("url" "text", "params" "jsonb", "headers" "jsonb", "timeout_milliseconds" integer) TO "authenticated";
-GRANT ALL ON FUNCTION "net"."http_get"("url" "text", "params" "jsonb", "headers" "jsonb", "timeout_milliseconds" integer) TO "service_role";
-
-REVOKE ALL ON FUNCTION "net"."http_post"("url" "text", "body" "jsonb", "params" "jsonb", "headers" "jsonb", "timeout_milliseconds" integer) FROM PUBLIC;
-GRANT ALL ON FUNCTION "net"."http_post"("url" "text", "body" "jsonb", "params" "jsonb", "headers" "jsonb", "timeout_milliseconds" integer) TO "supabase_functions_admin";
-GRANT ALL ON FUNCTION "net"."http_post"("url" "text", "body" "jsonb", "params" "jsonb", "headers" "jsonb", "timeout_milliseconds" integer) TO "anon";
-GRANT ALL ON FUNCTION "net"."http_post"("url" "text", "body" "jsonb", "params" "jsonb", "headers" "jsonb", "timeout_milliseconds" integer) TO "authenticated";
-GRANT ALL ON FUNCTION "net"."http_post"("url" "text", "body" "jsonb", "params" "jsonb", "headers" "jsonb", "timeout_milliseconds" integer) TO "service_role";
-
-GRANT ALL ON FUNCTION "pgsodium"."crypto_aead_det_decrypt"("message" "bytea", "additional" "bytea", "key_uuid" "uuid", "nonce" "bytea") TO "service_role";
-
-GRANT ALL ON FUNCTION "pgsodium"."crypto_aead_det_encrypt"("message" "bytea", "additional" "bytea", "key_uuid" "uuid", "nonce" "bytea") TO "service_role";
-
-GRANT ALL ON FUNCTION "pgsodium"."crypto_aead_det_keygen"() TO "service_role";
+GRANT ALL ON FUNCTION "public"."custom_access_token_hook"("_event" "jsonb") TO "anon";
+GRANT ALL ON FUNCTION "public"."custom_access_token_hook"("_event" "jsonb") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."custom_access_token_hook"("_event" "jsonb") TO "service_role";
 
 GRANT ALL ON FUNCTION "public"."find_next_upcoming_session"("p_case_id" bigint) TO "anon";
 GRANT ALL ON FUNCTION "public"."find_next_upcoming_session"("p_case_id" bigint) TO "authenticated";
 GRANT ALL ON FUNCTION "public"."find_next_upcoming_session"("p_case_id" bigint) TO "service_role";
+
+GRANT ALL ON FUNCTION "public"."get_case_gls_details"("p_case_id" bigint) TO "anon";
+GRANT ALL ON FUNCTION "public"."get_case_gls_details"("p_case_id" bigint) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."get_case_gls_details"("p_case_id" bigint) TO "service_role";
 
 GRANT ALL ON FUNCTION "public"."get_case_handler_details"("p_case_id" bigint) TO "anon";
 GRANT ALL ON FUNCTION "public"."get_case_handler_details"("p_case_id" bigint) TO "authenticated";
@@ -1448,25 +1751,21 @@ GRANT ALL ON FUNCTION "public"."get_role"() TO "anon";
 GRANT ALL ON FUNCTION "public"."get_role"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."get_role"() TO "service_role";
 
-GRANT ALL ON FUNCTION "public"."insert_into_target"() TO "anon";
-GRANT ALL ON FUNCTION "public"."insert_into_target"() TO "authenticated";
-GRANT ALL ON FUNCTION "public"."insert_into_target"() TO "service_role";
-
 GRANT ALL ON FUNCTION "public"."insert_user"() TO "anon";
 GRANT ALL ON FUNCTION "public"."insert_user"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."insert_user"() TO "service_role";
+
+GRANT ALL ON FUNCTION "public"."is_allowed"("requested_permission" "public"."permission_enum") TO "anon";
+GRANT ALL ON FUNCTION "public"."is_allowed"("requested_permission" "public"."permission_enum") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."is_allowed"("requested_permission" "public"."permission_enum") TO "service_role";
 
 GRANT ALL ON FUNCTION "public"."is_case_handler"("p_case_id" bigint) TO "anon";
 GRANT ALL ON FUNCTION "public"."is_case_handler"("p_case_id" bigint) TO "authenticated";
 GRANT ALL ON FUNCTION "public"."is_case_handler"("p_case_id" bigint) TO "service_role";
 
-GRANT ALL ON FUNCTION "public"."is_creator"() TO "anon";
-GRANT ALL ON FUNCTION "public"."is_creator"() TO "authenticated";
-GRANT ALL ON FUNCTION "public"."is_creator"() TO "service_role";
-
-GRANT ALL ON FUNCTION "public"."is_manager"() TO "anon";
-GRANT ALL ON FUNCTION "public"."is_manager"() TO "authenticated";
-GRANT ALL ON FUNCTION "public"."is_manager"() TO "service_role";
+GRANT ALL ON FUNCTION "public"."is_creator"("created_by" "uuid") TO "anon";
+GRANT ALL ON FUNCTION "public"."is_creator"("created_by" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."is_creator"("created_by" "uuid") TO "service_role";
 
 GRANT ALL ON FUNCTION "public"."set_completed_meta"() TO "anon";
 GRANT ALL ON FUNCTION "public"."set_completed_meta"() TO "authenticated";
@@ -1476,6 +1775,10 @@ GRANT ALL ON FUNCTION "public"."set_main_handler"("p_case_id" bigint, "p_user_id
 GRANT ALL ON FUNCTION "public"."set_main_handler"("p_case_id" bigint, "p_user_id" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."set_main_handler"("p_case_id" bigint, "p_user_id" "uuid") TO "service_role";
 
+GRANT ALL ON FUNCTION "public"."set_not_null_default_empty_string"("column_name" "text", "table_name" "text") TO "anon";
+GRANT ALL ON FUNCTION "public"."set_not_null_default_empty_string"("column_name" "text", "table_name" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."set_not_null_default_empty_string"("column_name" "text", "table_name" "text") TO "service_role";
+
 GRANT ALL ON FUNCTION "public"."team_member_i_u_from_sso"() TO "anon";
 GRANT ALL ON FUNCTION "public"."team_member_i_u_from_sso"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."team_member_i_u_from_sso"() TO "service_role";
@@ -1483,6 +1786,10 @@ GRANT ALL ON FUNCTION "public"."team_member_i_u_from_sso"() TO "service_role";
 GRANT ALL ON FUNCTION "public"."trigger_on_session_status"() TO "anon";
 GRANT ALL ON FUNCTION "public"."trigger_on_session_status"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."trigger_on_session_status"() TO "service_role";
+
+GRANT ALL ON FUNCTION "public"."trigger_set_case_gls"() TO "anon";
+GRANT ALL ON FUNCTION "public"."trigger_set_case_gls"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."trigger_set_case_gls"() TO "service_role";
 
 GRANT ALL ON FUNCTION "public"."trigger_set_created_meta"() TO "anon";
 GRANT ALL ON FUNCTION "public"."trigger_set_created_meta"() TO "authenticated";
@@ -1504,6 +1811,10 @@ GRANT ALL ON FUNCTION "public"."trigger_set_updated_meta"() TO "anon";
 GRANT ALL ON FUNCTION "public"."trigger_set_updated_meta"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."trigger_set_updated_meta"() TO "service_role";
 
+GRANT ALL ON FUNCTION "public"."update_specialist_name"() TO "anon";
+GRANT ALL ON FUNCTION "public"."update_specialist_name"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."update_specialist_name"() TO "service_role";
+
 GRANT ALL ON FUNCTION "public"."update_student_name"() TO "anon";
 GRANT ALL ON FUNCTION "public"."update_student_name"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."update_student_name"() TO "service_role";
@@ -1512,19 +1823,17 @@ GRANT ALL ON FUNCTION "public"."update_user"() TO "anon";
 GRANT ALL ON FUNCTION "public"."update_user"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."update_user"() TO "service_role";
 
-GRANT ALL ON TABLE "extensions"."pg_stat_statements" TO "postgres" WITH GRANT OPTION;
-
-GRANT ALL ON TABLE "extensions"."pg_stat_statements_info" TO "postgres" WITH GRANT OPTION;
-
-GRANT ALL ON TABLE "pgsodium"."decrypted_key" TO "pgsodium_keyholder";
-
-GRANT ALL ON TABLE "pgsodium"."masking_rule" TO "pgsodium_keyholder";
-
-GRANT ALL ON TABLE "pgsodium"."mask_columns" TO "pgsodium_keyholder";
-
 GRANT ALL ON TABLE "public"."case" TO "anon";
 GRANT ALL ON TABLE "public"."case" TO "authenticated";
 GRANT ALL ON TABLE "public"."case" TO "service_role";
+
+GRANT ALL ON TABLE "public"."case_gls" TO "anon";
+GRANT ALL ON TABLE "public"."case_gls" TO "authenticated";
+GRANT ALL ON TABLE "public"."case_gls" TO "service_role";
+
+GRANT ALL ON SEQUENCE "public"."case_gls_case_id_seq" TO "anon";
+GRANT ALL ON SEQUENCE "public"."case_gls_case_id_seq" TO "authenticated";
+GRANT ALL ON SEQUENCE "public"."case_gls_case_id_seq" TO "service_role";
 
 GRANT ALL ON TABLE "public"."case_handler" TO "anon";
 GRANT ALL ON TABLE "public"."case_handler" TO "authenticated";
@@ -1550,9 +1859,10 @@ GRANT ALL ON TABLE "public"."target" TO "anon";
 GRANT ALL ON TABLE "public"."target" TO "authenticated";
 GRANT ALL ON TABLE "public"."target" TO "service_role";
 
-GRANT ALL ON TABLE "public"."team_member" TO "anon";
-GRANT ALL ON TABLE "public"."team_member" TO "authenticated";
 GRANT ALL ON TABLE "public"."team_member" TO "service_role";
+GRANT ALL ON TABLE "public"."team_member" TO "supabase_auth_admin";
+GRANT ALL ON TABLE "public"."team_member" TO "authenticated";
+GRANT ALL ON TABLE "public"."team_member" TO "anon";
 
 GRANT ALL ON TABLE "public"."case_oplog" TO "anon";
 GRANT ALL ON TABLE "public"."case_oplog" TO "authenticated";
@@ -1562,13 +1872,21 @@ GRANT ALL ON TABLE "public"."my_case" TO "anon";
 GRANT ALL ON TABLE "public"."my_case" TO "authenticated";
 GRANT ALL ON TABLE "public"."my_case" TO "service_role";
 
+GRANT ALL ON TABLE "public"."page" TO "anon";
+GRANT ALL ON TABLE "public"."page" TO "authenticated";
+GRANT ALL ON TABLE "public"."page" TO "service_role";
+
+GRANT ALL ON SEQUENCE "public"."page_id_seq" TO "anon";
+GRANT ALL ON SEQUENCE "public"."page_id_seq" TO "authenticated";
+GRANT ALL ON SEQUENCE "public"."page_id_seq" TO "service_role";
+
+GRANT ALL ON TABLE "public"."page_oplog" TO "anon";
+GRANT ALL ON TABLE "public"."page_oplog" TO "authenticated";
+GRANT ALL ON TABLE "public"."page_oplog" TO "service_role";
+
 GRANT ALL ON TABLE "public"."pending_member" TO "anon";
 GRANT ALL ON TABLE "public"."pending_member" TO "authenticated";
 GRANT ALL ON TABLE "public"."pending_member" TO "service_role";
-
-GRANT ALL ON TABLE "public"."profile" TO "anon";
-GRANT ALL ON TABLE "public"."profile" TO "authenticated";
-GRANT ALL ON TABLE "public"."profile" TO "service_role";
 
 GRANT ALL ON TABLE "public"."progress_note_attachment" TO "anon";
 GRANT ALL ON TABLE "public"."progress_note_attachment" TO "authenticated";
@@ -1578,13 +1896,41 @@ GRANT ALL ON SEQUENCE "public"."progress_note_id_seq" TO "anon";
 GRANT ALL ON SEQUENCE "public"."progress_note_id_seq" TO "authenticated";
 GRANT ALL ON SEQUENCE "public"."progress_note_id_seq" TO "service_role";
 
+GRANT ALL ON TABLE "public"."remark" TO "anon";
+GRANT ALL ON TABLE "public"."remark" TO "authenticated";
+GRANT ALL ON TABLE "public"."remark" TO "service_role";
+
+GRANT ALL ON SEQUENCE "public"."remark_id_seq" TO "anon";
+GRANT ALL ON SEQUENCE "public"."remark_id_seq" TO "authenticated";
+GRANT ALL ON SEQUENCE "public"."remark_id_seq" TO "service_role";
+
 GRANT ALL ON SEQUENCE "public"."reminder_id_seq" TO "anon";
 GRANT ALL ON SEQUENCE "public"."reminder_id_seq" TO "authenticated";
 GRANT ALL ON SEQUENCE "public"."reminder_id_seq" TO "service_role";
 
+GRANT ALL ON TABLE "public"."role_permission" TO "anon";
+GRANT ALL ON TABLE "public"."role_permission" TO "authenticated";
+GRANT ALL ON TABLE "public"."role_permission" TO "service_role";
+
+GRANT ALL ON TABLE "public"."safeguarding_note" TO "anon";
+GRANT ALL ON TABLE "public"."safeguarding_note" TO "authenticated";
+GRANT ALL ON TABLE "public"."safeguarding_note" TO "service_role";
+
+GRANT ALL ON SEQUENCE "public"."safeguarding_note_id_seq" TO "anon";
+GRANT ALL ON SEQUENCE "public"."safeguarding_note_id_seq" TO "authenticated";
+GRANT ALL ON SEQUENCE "public"."safeguarding_note_id_seq" TO "service_role";
+
 GRANT ALL ON SEQUENCE "public"."session_id_seq" TO "anon";
 GRANT ALL ON SEQUENCE "public"."session_id_seq" TO "authenticated";
 GRANT ALL ON SEQUENCE "public"."session_id_seq" TO "service_role";
+
+GRANT ALL ON TABLE "public"."specialist" TO "anon";
+GRANT ALL ON TABLE "public"."specialist" TO "authenticated";
+GRANT ALL ON TABLE "public"."specialist" TO "service_role";
+
+GRANT ALL ON SEQUENCE "public"."specialist_id_seq" TO "anon";
+GRANT ALL ON SEQUENCE "public"."specialist_id_seq" TO "authenticated";
+GRANT ALL ON SEQUENCE "public"."specialist_id_seq" TO "service_role";
 
 GRANT ALL ON SEQUENCE "public"."target_id_seq" TO "anon";
 GRANT ALL ON SEQUENCE "public"."target_id_seq" TO "authenticated";
