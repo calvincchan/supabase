@@ -59,19 +59,6 @@ WITH
   );
 
 --
--- Inital data: for each existing session, add the creator as a collaborator
---
-DO $$
-DECLARE
-  session RECORD;
-BEGIN
-  FOR session IN SELECT * FROM "public"."session" LOOP
-    INSERT INTO "public"."session_collaborator" ("session_id", "user_id", "created_at", "created_by")
-    VALUES (session.id, session.created_by, session.created_at, session.created_by);
-  END LOOP;
-END $$;
-
---
 -- Create view to get sessions of the current user
 --
 CREATE OR REPLACE VIEW
@@ -94,6 +81,7 @@ SELECT
   "a"."content",
   "a"."language",
   "a"."status",
+  "a"."collaborators",
   "a"."start_date",
   "a"."end_date",
   "a"."recurrence_rule",
@@ -148,3 +136,61 @@ BEGIN
   ORDER BY b.name;
 END;
 $function$;
+
+--
+-- Trigger to update "collaborators" field in session table when a collaborator is inserted, updated or deleted
+--
+CREATE
+OR REPLACE FUNCTION public.trigger_set_session_collaborator () RETURNS TRIGGER LANGUAGE plpgsql AS $function$
+DECLARE
+  collaborator_string TEXT;
+  p_session_id BIGINT;
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    p_session_id := OLD.session_id;
+  ELSE
+    p_session_id := NEW.session_id;
+  END IF;
+
+  SELECT STRING_AGG(b.name, '|' ORDER BY b.name ASC) INTO collaborator_string
+  FROM session_collaborator AS a
+  JOIN team_member AS b ON a.user_id = b.id
+  WHERE a.session_id = p_session_id;
+
+  UPDATE "session" SET collaborators = COALESCE(collaborator_string, '') WHERE id = p_session_id;
+
+  RETURN NEW;
+END;
+$function$;
+
+CREATE TRIGGER session_collaborator_i_u_d
+AFTER INSERT
+OR DELETE
+OR
+UPDATE ON public.session_collaborator FOR EACH ROW
+EXECUTE FUNCTION trigger_set_session_collaborator ();
+
+--
+-- Run the function to update the "collaborators" field in the session table
+--
+DO $$
+DECLARE
+  session RECORD;
+BEGIN
+  FOR session IN SELECT * FROM "public"."session" LOOP
+    PERFORM public.trigger_set_session_collaborator();
+  END LOOP;
+END $$;
+
+--
+-- Inital data: for each existing session, add the creator as a collaborator
+--
+DO $$
+DECLARE
+  session RECORD;
+BEGIN
+  FOR session IN SELECT * FROM "public"."session" LOOP
+    INSERT INTO "public"."session_collaborator" ("session_id", "user_id", "created_at", "created_by")
+    VALUES (session.id, session.created_by, session.created_at, session.created_by);
+  END LOOP;
+END $$;
