@@ -59,6 +59,12 @@ WITH
   );
 
 --
+-- Add new collaborators column to session table
+--
+ALTER TABLE "public"."session"
+ADD COLUMN "collaborators" TEXT NOT NULL DEFAULT '';
+
+--
 -- Create view to get sessions of the current user
 --
 CREATE OR REPLACE VIEW
