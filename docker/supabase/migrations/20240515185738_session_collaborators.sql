@@ -177,18 +177,6 @@ UPDATE ON public.session_collaborator FOR EACH ROW
 EXECUTE FUNCTION trigger_set_session_collaborator ();
 
 --
--- Run the function to update the "collaborators" field in the session table
---
-DO $$
-DECLARE
-  session RECORD;
-BEGIN
-  FOR session IN SELECT * FROM "public"."session" LOOP
-    PERFORM public.trigger_set_session_collaborator();
-  END LOOP;
-END $$;
-
---
 -- Inital data: for each existing session, add the creator as a collaborator
 --
 DO $$
