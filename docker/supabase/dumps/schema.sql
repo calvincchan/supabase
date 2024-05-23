@@ -79,7 +79,7 @@ CREATE TYPE "public"."grade_enum" AS ENUM (
     '12'
 );
 
-ALTER TYPE "public"."grade_enum" OWNER TO "supabase_admin";
+ALTER TYPE "public"."grade_enum" OWNER TO "postgres";
 
 CREATE TYPE "public"."iaa_enum" AS ENUM (
     'Separate room',
@@ -112,7 +112,7 @@ CREATE TYPE "public"."iaa_word_processor_enum" AS ENUM (
     'Subjects ONLY'
 );
 
-ALTER TYPE "public"."iaa_word_processor_enum" OWNER TO "supabase_admin";
+ALTER TYPE "public"."iaa_word_processor_enum" OWNER TO "postgres";
 
 CREATE TYPE "public"."permission_enum" AS ENUM (
     'case:audit',
@@ -166,7 +166,7 @@ CREATE TYPE "public"."permission_enum" AS ENUM (
     'team_member:delete'
 );
 
-ALTER TYPE "public"."permission_enum" OWNER TO "supabase_admin";
+ALTER TYPE "public"."permission_enum" OWNER TO "postgres";
 
 CREATE TYPE "public"."role_enum" AS ENUM (
     'IT Admin',
@@ -191,7 +191,7 @@ CREATE TYPE "public"."specialist_enum" AS ENUM (
     'Others'
 );
 
-ALTER TYPE "public"."specialist_enum" OWNER TO "supabase_admin";
+ALTER TYPE "public"."specialist_enum" OWNER TO "postgres";
 
 CREATE TYPE "public"."target_type_enum" AS ENUM (
     'Academic',
@@ -516,7 +516,7 @@ BEGIN
 END;
 $$;
 
-ALTER FUNCTION "public"."insert_session_collaborator"() OWNER TO "supabase_admin";
+ALTER FUNCTION "public"."insert_session_collaborator"() OWNER TO "postgres";
 
 CREATE OR REPLACE FUNCTION "public"."insert_user"() RETURNS "trigger"
     LANGUAGE "plpgsql" SECURITY DEFINER
@@ -817,7 +817,7 @@ BEGIN
 END;
 $$;
 
-ALTER FUNCTION "public"."trigger_set_session_collaborator"() OWNER TO "supabase_admin";
+ALTER FUNCTION "public"."trigger_set_session_collaborator"() OWNER TO "postgres";
 
 CREATE OR REPLACE FUNCTION "public"."trigger_set_updated_meta"() RETURNS "trigger"
     LANGUAGE "plpgsql"
@@ -1231,7 +1231,7 @@ CREATE OR REPLACE VIEW "public"."my_session" AS
      JOIN "public"."session_collaborator" "b" ON (("a"."id" = "b"."session_id")))
   WHERE ("b"."user_id" = "auth"."uid"());
 
-ALTER TABLE "public"."my_session" OWNER TO "supabase_admin";
+ALTER TABLE "public"."my_session" OWNER TO "postgres";
 
 CREATE TABLE IF NOT EXISTS "public"."page" (
     "id" bigint NOT NULL,
@@ -1891,7 +1891,6 @@ GRANT ALL ON FUNCTION "public"."get_session_collaborator_details"("p_session_id"
 GRANT ALL ON FUNCTION "public"."get_session_collaborator_details"("p_session_id" bigint) TO "authenticated";
 GRANT ALL ON FUNCTION "public"."get_session_collaborator_details"("p_session_id" bigint) TO "service_role";
 
-GRANT ALL ON FUNCTION "public"."insert_session_collaborator"() TO "postgres";
 GRANT ALL ON FUNCTION "public"."insert_session_collaborator"() TO "anon";
 GRANT ALL ON FUNCTION "public"."insert_session_collaborator"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."insert_session_collaborator"() TO "service_role";
@@ -1952,7 +1951,6 @@ GRANT ALL ON FUNCTION "public"."trigger_set_next_upcoming_session"() TO "anon";
 GRANT ALL ON FUNCTION "public"."trigger_set_next_upcoming_session"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."trigger_set_next_upcoming_session"() TO "service_role";
 
-GRANT ALL ON FUNCTION "public"."trigger_set_session_collaborator"() TO "postgres";
 GRANT ALL ON FUNCTION "public"."trigger_set_session_collaborator"() TO "anon";
 GRANT ALL ON FUNCTION "public"."trigger_set_session_collaborator"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."trigger_set_session_collaborator"() TO "service_role";
@@ -2026,7 +2024,6 @@ GRANT ALL ON TABLE "public"."session_collaborator" TO "anon";
 GRANT ALL ON TABLE "public"."session_collaborator" TO "authenticated";
 GRANT ALL ON TABLE "public"."session_collaborator" TO "service_role";
 
-GRANT ALL ON TABLE "public"."my_session" TO "postgres";
 GRANT ALL ON TABLE "public"."my_session" TO "anon";
 GRANT ALL ON TABLE "public"."my_session" TO "authenticated";
 GRANT ALL ON TABLE "public"."my_session" TO "service_role";
