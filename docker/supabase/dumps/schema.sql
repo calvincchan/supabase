@@ -1176,6 +1176,7 @@ CREATE OR REPLACE VIEW "public"."my_case" AS
     "a"."student_last_name",
     "a"."background",
     "a"."student_other_name",
+    "a"."student_preferred_name",
     "a"."case_no"
    FROM ("public"."case" "a"
      JOIN "public"."case_handler" "b" ON (("a"."id" = "b"."case_id")))
