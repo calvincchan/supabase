@@ -1184,6 +1184,24 @@ CREATE OR REPLACE VIEW "public"."my_case" AS
 
 ALTER TABLE "public"."my_case" OWNER TO "postgres";
 
+CREATE OR REPLACE VIEW "public"."my_progress_note" AS
+ SELECT "a"."id",
+    "a"."case_id",
+    "a"."created_at",
+    "a"."created_by",
+    "a"."created_by_name",
+    "a"."updated_at",
+    "a"."updated_by",
+    "a"."updated_by_name",
+    "a"."content",
+    "a"."tags",
+    "a"."attachments"
+   FROM ("public"."progress_note" "a"
+     JOIN "public"."case_handler" "b" ON (("a"."case_id" = "b"."case_id")))
+  WHERE ("b"."user_id" = "auth"."uid"());
+
+ALTER TABLE "public"."my_progress_note" OWNER TO "postgres";
+
 CREATE OR REPLACE VIEW "public"."my_reminder" AS
  SELECT "a"."id",
     "a"."case_id",
@@ -2039,6 +2057,10 @@ GRANT ALL ON TABLE "public"."case_oplog" TO "service_role";
 GRANT ALL ON TABLE "public"."my_case" TO "anon";
 GRANT ALL ON TABLE "public"."my_case" TO "authenticated";
 GRANT ALL ON TABLE "public"."my_case" TO "service_role";
+
+GRANT ALL ON TABLE "public"."my_progress_note" TO "anon";
+GRANT ALL ON TABLE "public"."my_progress_note" TO "authenticated";
+GRANT ALL ON TABLE "public"."my_progress_note" TO "service_role";
 
 GRANT ALL ON TABLE "public"."my_reminder" TO "anon";
 GRANT ALL ON TABLE "public"."my_reminder" TO "authenticated";
