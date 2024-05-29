@@ -371,6 +371,29 @@ $$;
 
 ALTER FUNCTION "audit"."truncate_trigger"() OWNER TO "postgres";
 
+CREATE OR REPLACE FUNCTION "public"."ban_user"("p_user_id" "uuid") RETURNS "void"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    AS $$
+BEGIN
+  IF p_user_id = auth.uid() THEN
+    RAISE EXCEPTION 'You cannot change active state of your own account.';
+  END IF;
+  IF public.is_allowed('team_member:delete') THEN
+    UPDATE "auth"."users"
+    SET "banned_until" = '2999-12-31'::timestamp
+    WHERE "id" = p_user_id;
+
+    UPDATE "public"."team_member"
+    SET "banned" = true
+    WHERE "id" = p_user_id;
+  ELSE
+    RAISE EXCEPTION 'You do not have permission to change active state an account.';
+  END IF;
+END;
+$$;
+
+ALTER FUNCTION "public"."ban_user"("p_user_id" "uuid") OWNER TO "postgres";
+
 CREATE OR REPLACE FUNCTION "public"."custom_access_token_hook"("_event" "jsonb") RETURNS "jsonb"
     LANGUAGE "plpgsql" IMMUTABLE SECURITY DEFINER
     AS $$
@@ -832,6 +855,29 @@ $$;
 
 ALTER FUNCTION "public"."trigger_set_updated_meta"() OWNER TO "postgres";
 
+CREATE OR REPLACE FUNCTION "public"."unban_user"("p_user_id" "uuid") RETURNS "void"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    AS $$
+BEGIN
+  IF p_user_id = auth.uid() THEN
+    RAISE EXCEPTION 'You cannot change active state of your own account.';
+  END IF;
+  IF public.is_allowed('team_member:delete') THEN
+    UPDATE "auth"."users"
+    SET "banned_until" = NULL
+    WHERE "id" = p_user_id;
+
+    UPDATE "public"."team_member"
+    SET "banned" = false
+    WHERE "id" = p_user_id;
+  ELSE
+    RAISE EXCEPTION 'You do not have permission to change active state an account.';
+  END IF;
+END;
+$$;
+
+ALTER FUNCTION "public"."unban_user"("p_user_id" "uuid") OWNER TO "postgres";
+
 CREATE OR REPLACE FUNCTION "public"."update_specialist_name"() RETURNS "trigger"
     LANGUAGE "plpgsql"
     AS $$
@@ -1126,7 +1172,8 @@ CREATE TABLE IF NOT EXISTS "public"."team_member" (
     "role" "public"."role_enum",
     "email" "text",
     "last_sign_in_at" timestamp with time zone,
-    "service" boolean DEFAULT false NOT NULL
+    "service" boolean DEFAULT false NOT NULL,
+    "banned" boolean DEFAULT false NOT NULL
 );
 
 ALTER TABLE "public"."team_member" OWNER TO "postgres";
@@ -1897,6 +1944,10 @@ GRANT USAGE ON SCHEMA "public" TO "authenticated";
 GRANT USAGE ON SCHEMA "public" TO "service_role";
 GRANT USAGE ON SCHEMA "public" TO "supabase_auth_admin";
 
+GRANT ALL ON FUNCTION "public"."ban_user"("p_user_id" "uuid") TO "anon";
+GRANT ALL ON FUNCTION "public"."ban_user"("p_user_id" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."ban_user"("p_user_id" "uuid") TO "service_role";
+
 GRANT ALL ON FUNCTION "public"."custom_access_token_hook"("_event" "jsonb") TO "anon";
 GRANT ALL ON FUNCTION "public"."custom_access_token_hook"("_event" "jsonb") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."custom_access_token_hook"("_event" "jsonb") TO "service_role";
@@ -1996,6 +2047,10 @@ GRANT ALL ON FUNCTION "public"."trigger_set_session_collaborator"() TO "service_
 GRANT ALL ON FUNCTION "public"."trigger_set_updated_meta"() TO "anon";
 GRANT ALL ON FUNCTION "public"."trigger_set_updated_meta"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."trigger_set_updated_meta"() TO "service_role";
+
+GRANT ALL ON FUNCTION "public"."unban_user"("p_user_id" "uuid") TO "anon";
+GRANT ALL ON FUNCTION "public"."unban_user"("p_user_id" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."unban_user"("p_user_id" "uuid") TO "service_role";
 
 GRANT ALL ON FUNCTION "public"."update_specialist_name"() TO "anon";
 GRANT ALL ON FUNCTION "public"."update_specialist_name"() TO "authenticated";
