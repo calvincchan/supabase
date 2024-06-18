@@ -79,7 +79,7 @@ CREATE TYPE "public"."grade_enum" AS ENUM (
     '12'
 );
 
-ALTER TYPE "public"."grade_enum" OWNER TO "supabase_admin";
+ALTER TYPE "public"."grade_enum" OWNER TO "postgres";
 
 CREATE TYPE "public"."iaa_enum" AS ENUM (
     'Separate room',
@@ -112,7 +112,7 @@ CREATE TYPE "public"."iaa_word_processor_enum" AS ENUM (
     'Subjects ONLY'
 );
 
-ALTER TYPE "public"."iaa_word_processor_enum" OWNER TO "supabase_admin";
+ALTER TYPE "public"."iaa_word_processor_enum" OWNER TO "postgres";
 
 CREATE TYPE "public"."permission_enum" AS ENUM (
     'case:audit',
@@ -163,10 +163,12 @@ CREATE TYPE "public"."permission_enum" AS ENUM (
     'team_member:list',
     'team_member:create',
     'team_member:edit',
-    'team_member:delete'
+    'team_member:delete',
+    'team_member:ban',
+    'team_member:unban'
 );
 
-ALTER TYPE "public"."permission_enum" OWNER TO "supabase_admin";
+ALTER TYPE "public"."permission_enum" OWNER TO "postgres";
 
 CREATE TYPE "public"."role_enum" AS ENUM (
     'IT Admin',
@@ -191,7 +193,7 @@ CREATE TYPE "public"."specialist_enum" AS ENUM (
     'Others'
 );
 
-ALTER TYPE "public"."specialist_enum" OWNER TO "supabase_admin";
+ALTER TYPE "public"."specialist_enum" OWNER TO "postgres";
 
 CREATE TYPE "public"."target_type_enum" AS ENUM (
     'Academic',
@@ -371,6 +373,29 @@ $$;
 
 ALTER FUNCTION "audit"."truncate_trigger"() OWNER TO "postgres";
 
+CREATE OR REPLACE FUNCTION "public"."ban_user"("p_user_id" "uuid") RETURNS "void"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    AS $$
+BEGIN
+  IF p_user_id = auth.uid() THEN
+    RAISE EXCEPTION 'You cannot ban of your own account.';
+  END IF;
+  IF public.is_allowed('team_member:ban') THEN
+    UPDATE "auth"."users"
+    SET "banned_until" = '2999-12-31'::timestamp
+    WHERE "id" = p_user_id;
+
+    UPDATE "public"."team_member"
+    SET "banned" = true
+    WHERE "id" = p_user_id;
+  ELSE
+    RAISE EXCEPTION 'You do not have permission to ban an account.';
+  END IF;
+END;
+$$;
+
+ALTER FUNCTION "public"."ban_user"("p_user_id" "uuid") OWNER TO "postgres";
+
 CREATE OR REPLACE FUNCTION "public"."custom_access_token_hook"("_event" "jsonb") RETURNS "jsonb"
     LANGUAGE "plpgsql" IMMUTABLE SECURITY DEFINER
     AS $$
@@ -516,7 +541,7 @@ BEGIN
 END;
 $$;
 
-ALTER FUNCTION "public"."insert_session_collaborator"() OWNER TO "supabase_admin";
+ALTER FUNCTION "public"."insert_session_collaborator"() OWNER TO "postgres";
 
 CREATE OR REPLACE FUNCTION "public"."insert_user"() RETURNS "trigger"
     LANGUAGE "plpgsql" SECURITY DEFINER
@@ -817,7 +842,7 @@ BEGIN
 END;
 $$;
 
-ALTER FUNCTION "public"."trigger_set_session_collaborator"() OWNER TO "supabase_admin";
+ALTER FUNCTION "public"."trigger_set_session_collaborator"() OWNER TO "postgres";
 
 CREATE OR REPLACE FUNCTION "public"."trigger_set_updated_meta"() RETURNS "trigger"
     LANGUAGE "plpgsql"
@@ -831,6 +856,29 @@ END;
 $$;
 
 ALTER FUNCTION "public"."trigger_set_updated_meta"() OWNER TO "postgres";
+
+CREATE OR REPLACE FUNCTION "public"."unban_user"("p_user_id" "uuid") RETURNS "void"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    AS $$
+BEGIN
+  IF p_user_id = auth.uid() THEN
+    RAISE EXCEPTION 'You cannot unban your own account.';
+  END IF;
+  IF public.is_allowed('team_member:unban') THEN
+    UPDATE "auth"."users"
+    SET "banned_until" = NULL
+    WHERE "id" = p_user_id;
+
+    UPDATE "public"."team_member"
+    SET "banned" = false
+    WHERE "id" = p_user_id;
+  ELSE
+    RAISE EXCEPTION 'You do not have permission to unban an account.';
+  END IF;
+END;
+$$;
+
+ALTER FUNCTION "public"."unban_user"("p_user_id" "uuid") OWNER TO "postgres";
 
 CREATE OR REPLACE FUNCTION "public"."update_specialist_name"() RETURNS "trigger"
     LANGUAGE "plpgsql"
@@ -1126,7 +1174,8 @@ CREATE TABLE IF NOT EXISTS "public"."team_member" (
     "role" "public"."role_enum",
     "email" "text",
     "last_sign_in_at" timestamp with time zone,
-    "service" boolean DEFAULT false NOT NULL
+    "service" boolean DEFAULT false NOT NULL,
+    "banned" boolean DEFAULT false NOT NULL
 );
 
 ALTER TABLE "public"."team_member" OWNER TO "postgres";
@@ -1176,12 +1225,50 @@ CREATE OR REPLACE VIEW "public"."my_case" AS
     "a"."student_last_name",
     "a"."background",
     "a"."student_other_name",
+    "a"."student_preferred_name",
     "a"."case_no"
    FROM ("public"."case" "a"
      JOIN "public"."case_handler" "b" ON (("a"."id" = "b"."case_id")))
   WHERE ("b"."user_id" = "auth"."uid"());
 
 ALTER TABLE "public"."my_case" OWNER TO "postgres";
+
+CREATE OR REPLACE VIEW "public"."my_progress_note" AS
+ SELECT "a"."id",
+    "a"."case_id",
+    "a"."created_at",
+    "a"."created_by",
+    "a"."created_by_name",
+    "a"."updated_at",
+    "a"."updated_by",
+    "a"."updated_by_name",
+    "a"."content",
+    "a"."tags",
+    "a"."attachments"
+   FROM ("public"."progress_note" "a"
+     JOIN "public"."case_handler" "b" ON (("a"."case_id" = "b"."case_id")))
+  WHERE ("b"."user_id" = "auth"."uid"());
+
+ALTER TABLE "public"."my_progress_note" OWNER TO "postgres";
+
+CREATE OR REPLACE VIEW "public"."my_reminder" AS
+ SELECT "a"."id",
+    "a"."case_id",
+    "a"."created_at",
+    "a"."created_by",
+    "a"."created_by_name",
+    "a"."updated_at",
+    "a"."updated_by",
+    "a"."updated_by_name",
+    "a"."content",
+    "a"."due_date",
+    "a"."start_date",
+    "a"."end_date"
+   FROM ("public"."reminder" "a"
+     JOIN "public"."case_handler" "b" ON (("a"."case_id" = "b"."case_id")))
+  WHERE ("b"."user_id" = "auth"."uid"());
+
+ALTER TABLE "public"."my_reminder" OWNER TO "postgres";
 
 CREATE TABLE IF NOT EXISTS "public"."session_collaborator" (
     "session_id" bigint NOT NULL,
@@ -1231,7 +1318,7 @@ CREATE OR REPLACE VIEW "public"."my_session" AS
      JOIN "public"."session_collaborator" "b" ON (("a"."id" = "b"."session_id")))
   WHERE ("b"."user_id" = "auth"."uid"());
 
-ALTER TABLE "public"."my_session" OWNER TO "supabase_admin";
+ALTER TABLE "public"."my_session" OWNER TO "postgres";
 
 CREATE TABLE IF NOT EXISTS "public"."page" (
     "id" bigint NOT NULL,
@@ -1859,6 +1946,10 @@ GRANT USAGE ON SCHEMA "public" TO "authenticated";
 GRANT USAGE ON SCHEMA "public" TO "service_role";
 GRANT USAGE ON SCHEMA "public" TO "supabase_auth_admin";
 
+GRANT ALL ON FUNCTION "public"."ban_user"("p_user_id" "uuid") TO "anon";
+GRANT ALL ON FUNCTION "public"."ban_user"("p_user_id" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."ban_user"("p_user_id" "uuid") TO "service_role";
+
 GRANT ALL ON FUNCTION "public"."custom_access_token_hook"("_event" "jsonb") TO "anon";
 GRANT ALL ON FUNCTION "public"."custom_access_token_hook"("_event" "jsonb") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."custom_access_token_hook"("_event" "jsonb") TO "service_role";
@@ -1891,7 +1982,6 @@ GRANT ALL ON FUNCTION "public"."get_session_collaborator_details"("p_session_id"
 GRANT ALL ON FUNCTION "public"."get_session_collaborator_details"("p_session_id" bigint) TO "authenticated";
 GRANT ALL ON FUNCTION "public"."get_session_collaborator_details"("p_session_id" bigint) TO "service_role";
 
-GRANT ALL ON FUNCTION "public"."insert_session_collaborator"() TO "postgres";
 GRANT ALL ON FUNCTION "public"."insert_session_collaborator"() TO "anon";
 GRANT ALL ON FUNCTION "public"."insert_session_collaborator"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."insert_session_collaborator"() TO "service_role";
@@ -1952,7 +2042,6 @@ GRANT ALL ON FUNCTION "public"."trigger_set_next_upcoming_session"() TO "anon";
 GRANT ALL ON FUNCTION "public"."trigger_set_next_upcoming_session"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."trigger_set_next_upcoming_session"() TO "service_role";
 
-GRANT ALL ON FUNCTION "public"."trigger_set_session_collaborator"() TO "postgres";
 GRANT ALL ON FUNCTION "public"."trigger_set_session_collaborator"() TO "anon";
 GRANT ALL ON FUNCTION "public"."trigger_set_session_collaborator"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."trigger_set_session_collaborator"() TO "service_role";
@@ -1960,6 +2049,10 @@ GRANT ALL ON FUNCTION "public"."trigger_set_session_collaborator"() TO "service_
 GRANT ALL ON FUNCTION "public"."trigger_set_updated_meta"() TO "anon";
 GRANT ALL ON FUNCTION "public"."trigger_set_updated_meta"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."trigger_set_updated_meta"() TO "service_role";
+
+GRANT ALL ON FUNCTION "public"."unban_user"("p_user_id" "uuid") TO "anon";
+GRANT ALL ON FUNCTION "public"."unban_user"("p_user_id" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."unban_user"("p_user_id" "uuid") TO "service_role";
 
 GRANT ALL ON FUNCTION "public"."update_specialist_name"() TO "anon";
 GRANT ALL ON FUNCTION "public"."update_specialist_name"() TO "authenticated";
@@ -2022,11 +2115,18 @@ GRANT ALL ON TABLE "public"."my_case" TO "anon";
 GRANT ALL ON TABLE "public"."my_case" TO "authenticated";
 GRANT ALL ON TABLE "public"."my_case" TO "service_role";
 
+GRANT ALL ON TABLE "public"."my_progress_note" TO "anon";
+GRANT ALL ON TABLE "public"."my_progress_note" TO "authenticated";
+GRANT ALL ON TABLE "public"."my_progress_note" TO "service_role";
+
+GRANT ALL ON TABLE "public"."my_reminder" TO "anon";
+GRANT ALL ON TABLE "public"."my_reminder" TO "authenticated";
+GRANT ALL ON TABLE "public"."my_reminder" TO "service_role";
+
 GRANT ALL ON TABLE "public"."session_collaborator" TO "anon";
 GRANT ALL ON TABLE "public"."session_collaborator" TO "authenticated";
 GRANT ALL ON TABLE "public"."session_collaborator" TO "service_role";
 
-GRANT ALL ON TABLE "public"."my_session" TO "postgres";
 GRANT ALL ON TABLE "public"."my_session" TO "anon";
 GRANT ALL ON TABLE "public"."my_session" TO "authenticated";
 GRANT ALL ON TABLE "public"."my_session" TO "service_role";

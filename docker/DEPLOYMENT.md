@@ -82,3 +82,7 @@ GOTRUE_HOOK_CUSTOM_ACCESS_TOKEN_ENABLED=true
 GOTRUE_HOOK_CUSTOM_ACCESS_TOKEN_URI="pg-functions://postgres/public/custom_access_token_hook"
 
 2. double check role_permission table is populated
+
+### 20240529195456_ban_unban_team_member
+
+1. Enable realtime to table `team_member`.
