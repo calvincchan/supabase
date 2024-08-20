@@ -86,3 +86,11 @@ GOTRUE_HOOK_CUSTOM_ACCESS_TOKEN_URI="pg-functions://postgres/public/custom_acces
 ### 20240529195456_ban_unban_team_member
 
 1. Enable realtime to table `team_member`.
+
+### 20240815142831_rollover_job
+
+1. Enable realtime to table `rollover_job`.
+
+### 20240820012658_legacy_progress_logging
+
+1. create a dir "./upload" in the root of the project
