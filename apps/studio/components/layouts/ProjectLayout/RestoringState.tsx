@@ -1,13 +1,14 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { useParams } from 'common'
-import Link from 'next/link'
 import { useEffect, useRef, useState } from 'react'
-import { Button, IconAlertCircle, IconCheckCircle, IconLoader } from 'ui'
+import { Button } from 'ui'
 
+import { projectKeys } from 'data/projects/keys'
 import { invalidateProjectDetailsQuery } from 'data/projects/project-detail-query'
 import { getWithTimeout } from 'lib/common/fetch'
 import { API_URL, PROJECT_STATUS } from 'lib/constants'
 import { useProjectContext } from './ProjectContext'
+import { CheckCircle, Loader } from 'lucide-react'
 
 const RestoringState = () => {
   const { ref } = useParams()
@@ -16,7 +17,6 @@ const RestoringState = () => {
   const checkServerInterval = useRef<number>()
 
   const [loading, setLoading] = useState(false)
-  const [isFailed, setIsFailed] = useState(false)
   const [isCompleted, setIsCompleted] = useState(false)
 
   useEffect(() => {
@@ -32,12 +32,11 @@ const RestoringState = () => {
     })
     if (projectStatus && !projectStatus.error) {
       const { status } = projectStatus
-      if (status === PROJECT_STATUS.RESTORATION_FAILED) {
-        clearInterval(checkServerInterval.current)
-        setIsFailed(true)
-      } else if (status === PROJECT_STATUS.ACTIVE_HEALTHY) {
+      if (status === PROJECT_STATUS.ACTIVE_HEALTHY) {
         clearInterval(checkServerInterval.current)
         setIsCompleted(true)
+      } else {
+        queryClient.invalidateQueries(projectKeys.detail(ref))
       }
     }
   }
@@ -56,7 +55,7 @@ const RestoringState = () => {
           <div className="space-y-6 pt-6">
             <div className="flex px-8 space-x-8">
               <div className="mt-1">
-                <IconCheckCircle className="text-brand" size={18} strokeWidth={2} />
+                <CheckCircle className="text-brand" size={18} strokeWidth={2} />
               </div>
               <div className="space-y-1">
                 <p>Restoration complete!</p>
@@ -71,37 +70,11 @@ const RestoringState = () => {
               </Button>
             </div>
           </div>
-        ) : isFailed ? (
-          <div className="space-y-6 pt-6">
-            <div className="flex px-8 space-x-8">
-              <div className="mt-1">
-                <IconAlertCircle size={18} strokeWidth={2} />
-              </div>
-              <div className="space-y-1">
-                <p>Something went wrong while restoring your project</p>
-                <p className="text-sm text-foreground-light">
-                  Our engineers have already been notified of this, do hang tight while we are
-                  investigating into the issue.
-                </p>
-              </div>
-            </div>
-            {isFailed && (
-              <div className="border-t border-overlay flex items-center justify-end py-4 px-8">
-                <Button asChild type="default">
-                  <Link
-                    href={`/support/new?category=Database_unresponsive&ref=${project?.ref}&subject=Restoration%20failed%20for%20project`}
-                  >
-                    Contact support
-                  </Link>
-                </Button>
-              </div>
-            )}
-          </div>
         ) : (
           <div className="space-y-6 py-6">
             <div className="flex px-8 space-x-8">
               <div className="mt-1">
-                <IconLoader className="animate-spin" size={18} />
+                <Loader className="animate-spin" size={18} />
               </div>
               <div className="space-y-1">
                 <p>Restoration in progress</p>

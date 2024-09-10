@@ -1,9 +1,9 @@
 import { useRouter } from 'next/router'
 import { useState } from 'react'
-import toast from 'react-hot-toast'
+import { toast } from 'sonner'
 
+import { useParams } from 'common'
 import Table from 'components/to-be-cleaned/Table'
-import ConfirmationModal from 'ui-patterns/Dialogs/ConfirmationModal'
 import { useContentDeleteMutation } from 'data/content/content-delete-mutation'
 import { useContentUpsertMutation } from 'data/content/content-upsert-mutation'
 import {
@@ -12,45 +12,46 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-  IconChevronRight,
-  IconEdit,
-  IconMoreVertical,
-  IconPlay,
-  IconTrash,
-  Modal,
 } from 'ui'
+import ConfirmationModal from 'ui-patterns/Dialogs/ConfirmationModal'
 import SqlSnippetCode from './Logs.SqlSnippetCode'
 import { UpdateSavedQueryModal } from './Logs.UpdateSavedQueryModal'
 import { timestampLocalFormatter } from './LogsFormatters'
+import { ChevronRight, Play, MoreVertical, Edit, Trash } from 'lucide-react'
 
 interface SavedQueriesItemProps {
   item: any
 }
 
 const SavedQueriesItem = ({ item }: SavedQueriesItemProps) => {
+  const router = useRouter()
+  const { ref } = useParams()
   const [expand, setExpand] = useState<boolean>(false)
   const [showConfirmModal, setShowConfirmModal] = useState<boolean>(false)
   const [showUpdateModal, setShowUpdateModal] = useState<boolean>(false)
 
-  const { mutateAsync: deleteContent } = useContentDeleteMutation()
-  const { mutateAsync: updateContent } = useContentUpsertMutation()
-
-  const router = useRouter()
-  const { ref } = router.query
+  const { mutate: deleteContent } = useContentDeleteMutation({
+    onSuccess: () => {
+      setShowConfirmModal(false)
+      toast.success('Successfully deleted query')
+    },
+    onError: (error) => {
+      toast.error(`Failed to delete saved query: ${error.message}`)
+    },
+  })
+  const { mutate: updateContent } = useContentUpsertMutation({
+    onSuccess: () => {
+      setShowUpdateModal(false)
+      toast.success('Successfully updated query')
+    },
+    onError: (error) => {
+      toast.error(`Failed to update query: ${error.message}`)
+    },
+  })
 
   const onConfirmDelete = async () => {
-    try {
-      if (!ref || typeof ref !== 'string') {
-        console.error('Invalid project reference')
-        return
-      }
-      await deleteContent({ projectRef: ref, ids: [item.id] })
-      setShowConfirmModal(false)
-      toast.success('Query deleted')
-    } catch (error) {
-      toast.error(`Failed to delete saved query. Check the console for more details.`)
-      console.error('Failed to delete saved query', error)
-    }
+    if (!ref || typeof ref !== 'string') return console.error('Invalid project reference')
+    deleteContent({ projectRef: ref, ids: [item.id] })
   }
 
   const onConfirmUpdate = async ({
@@ -60,26 +61,21 @@ const SavedQueriesItem = ({ item }: SavedQueriesItemProps) => {
     name: string
     description: string | null
   }) => {
-    if (!ref || typeof ref !== 'string') {
-      console.error('Invalid project reference')
-      return
-    }
-    await updateContent({ projectRef: ref, payload: { ...item, name, description } })
-    setShowUpdateModal(false)
-    toast.success('Query updated')
+    if (!ref || typeof ref !== 'string') return console.error('Invalid project reference')
+    updateContent({ projectRef: ref, payload: { ...item, name, description } })
   }
 
   return (
     <>
       <Table.tr
         key={item.id}
-        className="expandable-tr [&>*]:flex [&>*]:items-center [&>*]:text-ellipsis [&>*]:overflow-hidden"
+        className="expandable-tr [&>*]:flex [&>*]:items-center [&>*]:truncate [&>*]:overflow-hidden"
       >
         <Table.td className="whitespace-nowrap">
           <div className="flex items-center gap-2">
             <button onClick={() => setExpand(!expand)} className="flex items-center gap-2">
               <div className={'transition ' + (expand ? 'rotate-90' : 'rotate-0')}>
-                <IconChevronRight strokeWidth={2} size={14} />
+                <ChevronRight strokeWidth={2} size={14} />
               </div>
               <span className="text-sm text-foreground">{item.name}</span>
             </button>
@@ -97,7 +93,7 @@ const SavedQueriesItem = ({ item }: SavedQueriesItemProps) => {
         <Table.td className="flex items-center gap-2 justify-end">
           <Button
             type="alternative"
-            iconRight={<IconPlay size={10} />}
+            iconRight={<Play size={10} />}
             onClick={() =>
               router.push(`/project/${ref}/logs/explorer?q=${encodeURIComponent(item.content.sql)}`)
             }
@@ -111,14 +107,14 @@ const SavedQueriesItem = ({ item }: SavedQueriesItemProps) => {
                   type="text"
                   title="Actions"
                   className="space-x-0 h-7 px-1.5"
-                  icon={<IconMoreVertical />}
+                  icon={<MoreVertical />}
                 >
                   <div className="sr-only">Actions</div>
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent className="max-w-[144px]">
                 <DropdownMenuItem onClick={() => setShowUpdateModal(true)}>
-                  <IconEdit size={10} className="mr-2" />
+                  <Edit size={10} className="mr-2" />
                   Edit
                 </DropdownMenuItem>
                 <DropdownMenuItem
@@ -126,7 +122,7 @@ const SavedQueriesItem = ({ item }: SavedQueriesItemProps) => {
                     setShowConfirmModal(true)
                   }}
                 >
-                  <IconTrash size={10} className="mr-2" />
+                  <Trash size={10} className="mr-2" />
                   Delete
                 </DropdownMenuItem>
               </DropdownMenuContent>

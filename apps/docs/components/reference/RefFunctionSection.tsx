@@ -1,13 +1,14 @@
 import { Fragment } from 'react'
 import ReactMarkdown from 'react-markdown'
-import { CodeBlock, IconDatabase, Tabs } from 'ui'
+import { CodeBlock, Tabs } from 'ui'
 import components from '~/components'
 import Options from '~/components/Options'
 import Param from '~/components/Params'
 import RefDetailCollapse from '~/components/reference/RefDetailCollapse'
 import RefSubLayout from '~/layouts/ref/RefSubLayout'
 import { extractTsDocNode, generateParameters } from '~/lib/refGenerator/helpers'
-import { IRefFunctionSection } from './Reference.types'
+import type { IRefFunctionSection } from './Reference.types'
+import { Database } from 'icons'
 
 const RefFunctionSection: React.FC<IRefFunctionSection> = (props) => {
   const item = props.spec.functions.find((x: any) => x.id === props.funcData.id)
@@ -17,7 +18,9 @@ const RefFunctionSection: React.FC<IRefFunctionSection> = (props) => {
 
   const tsDefinition =
     hasTsRef && props.typeSpec ? extractTsDocNode(hasTsRef, props.typeSpec) : null
-  const parameters = hasTsRef && tsDefinition ? generateParameters(tsDefinition) : item.params
+  const parameters =
+    item.overwriteParams ??
+    (hasTsRef && tsDefinition ? generateParameters(tsDefinition) : item.params)
   const shortText = hasTsRef && tsDefinition ? tsDefinition.signatures[0].comment?.shortText : ''
 
   return (
@@ -155,7 +158,7 @@ const RefFunctionSection: React.FC<IRefFunctionSection> = (props) => {
                                         <div className="bg-background px-5 py-2">
                                           <div className="flex gap-2 items-center">
                                             <div className="text-brand">
-                                              <IconDatabase size={16} />
+                                              <Database size={16} />
                                             </div>
                                             <h5 className="text-xs text-foreground">
                                               {table.name}

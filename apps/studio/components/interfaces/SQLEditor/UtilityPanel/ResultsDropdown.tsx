@@ -3,22 +3,22 @@ import { markdownTable } from 'markdown-table'
 import { useRouter } from 'next/router'
 import { useMemo, useRef } from 'react'
 import { CSVLink } from 'react-csv'
-import toast from 'react-hot-toast'
+import { toast } from 'sonner'
 
 import { useTelemetryProps } from 'common'
 import { useProjectContext } from 'components/layouts/ProjectLayout/ProjectContext'
+import { useFlag } from 'hooks/ui/useFlag'
 import { copyToClipboard } from 'lib/helpers'
 import Telemetry from 'lib/telemetry'
+import { ChevronDownIcon, Clipboard, Download } from 'lucide-react'
 import { useSqlEditorStateSnapshot } from 'state/sql-editor'
+import { useSqlEditorV2StateSnapshot } from 'state/sql-editor-v2'
 import {
   Button,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-  IconChevronDown,
-  IconClipboard,
-  IconDownload,
 } from 'ui'
 
 export type ResultsDropdownProps = {
@@ -27,9 +27,13 @@ export type ResultsDropdownProps = {
 
 const ResultsDropdown = ({ id }: ResultsDropdownProps) => {
   const { project } = useProjectContext()
-  const snap = useSqlEditorStateSnapshot()
   const telemetryProps = useTelemetryProps()
-  const result = snap.results?.[id]?.[0] ?? undefined
+
+  const snap = useSqlEditorStateSnapshot()
+  const snapV2 = useSqlEditorV2StateSnapshot()
+  const enableFolders = useFlag('sqlFolderOrganization')
+
+  const result = enableFolders ? snapV2.results?.[id]?.[0] : snap.results?.[id]?.[0] ?? undefined
   const csvRef = useRef<CSVLink & HTMLAnchorElement & { link: HTMLAnchorElement }>(null)
   const router = useRouter()
 
@@ -122,7 +126,7 @@ const ResultsDropdown = ({ id }: ResultsDropdownProps) => {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button type="text" iconRight={<IconChevronDown />}>
+        <Button type="text" iconRight={<ChevronDownIcon size={14} />}>
           Export
         </Button>
       </DropdownMenuTrigger>
@@ -132,20 +136,24 @@ const ResultsDropdown = ({ id }: ResultsDropdownProps) => {
         className="hidden"
         headers={headers}
         data={csvData}
-        filename={`supabase_${project?.ref}_${snap.snippets[id]?.snippet.name}.csv`}
+        filename={
+          enableFolders
+            ? `supabase_${project?.ref}_${snapV2.snippets[id]?.snippet.name}.csv`
+            : `supabase_${project?.ref}_${snap.snippets[id]?.snippet.name}.csv`
+        }
       />
 
       <DropdownMenuContent side="bottom" align="start">
         <DropdownMenuItem onClick={onDownloadCSV} className="space-x-2">
-          <IconDownload size="tiny" />
+          <Download size={14} />
           <p>Download CSV</p>
         </DropdownMenuItem>
         <DropdownMenuItem onClick={onCopyAsMarkdown} className="space-x-2">
-          <IconClipboard size="tiny" />
+          <Clipboard size={14} />
           <p>Copy as markdown</p>
         </DropdownMenuItem>
         <DropdownMenuItem onClick={onCopyAsJSON} className="space-x-2">
-          <IconClipboard size="tiny" />
+          <Clipboard size={14} />
           <p>Copy as JSON</p>
         </DropdownMenuItem>
       </DropdownMenuContent>
