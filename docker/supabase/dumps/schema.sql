@@ -165,7 +165,9 @@ CREATE TYPE "public"."permission_enum" AS ENUM (
     'team_member:edit',
     'team_member:delete',
     'team_member:ban',
-    'team_member:unban'
+    'team_member:unban',
+    'rollover_job:list',
+    'rollover_job:create'
 );
 
 ALTER TYPE "public"."permission_enum" OWNER TO "postgres";
@@ -176,7 +178,8 @@ CREATE TYPE "public"."role_enum" AS ENUM (
     'Nurse',
     'Li Ren Leadership',
     'Li Ren GLS',
-    'Li Ren Contact'
+    'Li Ren Contact',
+    'Grade Level Manager'
 );
 
 ALTER TYPE "public"."role_enum" OWNER TO "postgres";
@@ -373,6 +376,60 @@ $$;
 
 ALTER FUNCTION "audit"."truncate_trigger"() OWNER TO "postgres";
 
+CREATE OR REPLACE FUNCTION "public"."accept_legacy_progress_note"("p_id" bigint) RETURNS "void"
+    LANGUAGE "plpgsql"
+    AS $$
+DECLARE
+  legacy_record legacy_progress_note%ROWTYPE;
+  v_progress_note_id BIGINT;
+  v_name TEXT;
+BEGIN
+  -- Fetch the record from legacy_progress_note
+  SELECT * INTO legacy_record FROM legacy_progress_note WHERE id = p_id;
+
+  -- Check if the record exists
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Record with id % does not exist in legacy_progress_note', p_id;
+  END IF;
+
+  -- get name of entered_by, if not found that use legacy_record.entered_by
+  SELECT name INTO v_name FROM team_member WHERE id = legacy_record.entered_by_uuid;
+  IF NOT FOUND THEN
+    v_name := legacy_record.entered_by;
+  END IF;
+
+  -- Insert the record into progress_note, and get the inserted id
+  INSERT INTO progress_note (case_id, content, tags, created_at, created_by, created_by_name, updated_at, updated_by, updated_by_name, imported_at, imported_by, imported_by_name, import_record_id)
+  VALUES (legacy_record.case_id, legacy_record.content, legacy_record.tags, legacy_record.entered_at_date, legacy_record.entered_by_uuid, v_name, legacy_record.entered_at_date, legacy_record.entered_by_uuid, v_name, NOW(), auth.uid(), get_name(), p_id)
+  RETURNING id INTO v_progress_note_id;
+
+  -- Update the legacy record to status 'Accepted', set accepted_at and accepted_by
+  UPDATE legacy_progress_note
+  SET status = 'Accepted', accepted_at = NOW(), accepted_by = auth.uid(), accepted_by_name = get_name()
+  WHERE id = p_id;
+END;
+$$;
+
+ALTER FUNCTION "public"."accept_legacy_progress_note"("p_id" bigint) OWNER TO "postgres";
+
+CREATE OR REPLACE FUNCTION "public"."add_table_to_publication_if_not_exists"("schema_name" "text", "table_name" "text", "publication_name" "text") RETURNS "void"
+    LANGUAGE "plpgsql"
+    AS $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_publication_tables
+        WHERE pubname = publication_name
+        AND tablename = table_name
+        AND schemaname = schema_name
+    ) THEN
+        EXECUTE format('ALTER PUBLICATION %I ADD TABLE %I.%I', publication_name, schema_name, table_name);
+    END IF;
+END;
+$$;
+
+ALTER FUNCTION "public"."add_table_to_publication_if_not_exists"("schema_name" "text", "table_name" "text", "publication_name" "text") OWNER TO "postgres";
+
 CREATE OR REPLACE FUNCTION "public"."ban_user"("p_user_id" "uuid") RETURNS "void"
     LANGUAGE "plpgsql" SECURITY DEFINER
     AS $$
@@ -489,6 +546,20 @@ END;
 $$;
 
 ALTER FUNCTION "public"."get_cases_by_handler"("p_user_id" "uuid") OWNER TO "postgres";
+
+CREATE OR REPLACE FUNCTION "public"."get_managed_grades"() RETURNS "public"."grade_enum"[]
+    LANGUAGE "plpgsql"
+    AS $$
+DECLARE
+  v_grades grade_enum[];
+BEGIN
+  SELECT managed_grades INTO v_grades
+   FROM team_member WHERE id = auth.uid();
+  RETURN v_grades;
+END;
+$$;
+
+ALTER FUNCTION "public"."get_managed_grades"() OWNER TO "supabase_admin";
 
 CREATE OR REPLACE FUNCTION "public"."get_name"() RETURNS "text"
     LANGUAGE "plpgsql"
@@ -646,6 +717,16 @@ $$;
 
 ALTER FUNCTION "public"."set_not_null_default_empty_string"("column_name" "text", "table_name" "text") OWNER TO "postgres";
 
+CREATE OR REPLACE FUNCTION "public"."should_apply_grade_filter"() RETURNS boolean
+    LANGUAGE "plpgsql"
+    AS $$
+BEGIN
+  RETURN (auth.jwt() ->> 'user_role') = 'Grade Level Manager';
+END;
+$$;
+
+ALTER FUNCTION "public"."should_apply_grade_filter"() OWNER TO "supabase_admin";
+
 CREATE OR REPLACE FUNCTION "public"."team_member_i_u_from_sso"() RETURNS "trigger"
     LANGUAGE "plpgsql" SECURITY DEFINER
     AS $$
@@ -737,13 +818,11 @@ ALTER FUNCTION "public"."trigger_set_case_gls"() OWNER TO "postgres";
 
 CREATE OR REPLACE FUNCTION "public"."trigger_set_created_meta"() RETURNS "trigger"
     LANGUAGE "plpgsql"
-    AS $$
-BEGIN
+    AS $$BEGIN
   NEW.created_by := auth.uid();
-  SELECT get_name() INTO NEW.created_by_name;
+  NEW.created_by_name := get_name();
   RETURN NEW;
-END;
-$$;
+END;$$;
 
 ALTER FUNCTION "public"."trigger_set_created_meta"() OWNER TO "postgres";
 
@@ -846,14 +925,12 @@ ALTER FUNCTION "public"."trigger_set_session_collaborator"() OWNER TO "postgres"
 
 CREATE OR REPLACE FUNCTION "public"."trigger_set_updated_meta"() RETURNS "trigger"
     LANGUAGE "plpgsql"
-    AS $$
-BEGIN
+    AS $$BEGIN
   NEW.updated_at := now();
   NEW.updated_by := auth.uid();
-  SELECT get_name() INTO NEW.updated_by_name;
+  NEW.updated_by_name := get_name();
   RETURN NEW;
-END;
-$$;
+END;$$;
 
 ALTER FUNCTION "public"."trigger_set_updated_meta"() OWNER TO "postgres";
 
@@ -1026,15 +1103,15 @@ CREATE TABLE IF NOT EXISTS "public"."case" (
     "specialists" "jsonb" DEFAULT '[]'::"jsonb" NOT NULL,
     "case_no" "text" DEFAULT ''::"text" NOT NULL,
     "student_preferred_name" "text" DEFAULT ''::"text" NOT NULL,
-    "parent_consent_form_attachments" "jsonb" DEFAULT '[]'::"jsonb" NOT NULL,
     "information_release_form_attachments" "jsonb" DEFAULT '[]'::"jsonb" NOT NULL,
+    "parent_consent_form_attachments" "jsonb" DEFAULT '[]'::"jsonb" NOT NULL,
     "termination_form_attachments" "jsonb" DEFAULT '[]'::"jsonb" NOT NULL,
-    "gls" "text" DEFAULT ''::"text" NOT NULL,
-    "support_frequency_learning" "text" DEFAULT ''::"text" NOT NULL,
     "support_frequency_counselling" "text" DEFAULT ''::"text" NOT NULL,
-    "medication_past" "text" DEFAULT ''::"text" NOT NULL,
+    "support_frequency_learning" "text" DEFAULT ''::"text" NOT NULL,
     "medication_current" "text" DEFAULT ''::"text" NOT NULL,
+    "medication_past" "text" DEFAULT ''::"text" NOT NULL,
     "subject_iaa" "jsonb" DEFAULT '[]'::"jsonb" NOT NULL,
+    "gls" "text" DEFAULT ''::"text" NOT NULL,
     CONSTRAINT "case_tier_check" CHECK (("tier" = ANY (ARRAY['1'::"bpchar", '2'::"bpchar", '3'::"bpchar"])))
 );
 
@@ -1087,7 +1164,11 @@ CREATE TABLE IF NOT EXISTS "public"."progress_note" (
     "created_by_name" "text",
     "updated_by_name" "text",
     "tags" "bpchar"[] DEFAULT '{}'::"bpchar"[] NOT NULL,
-    "attachments" "jsonb" DEFAULT '[]'::"jsonb" NOT NULL
+    "attachments" "jsonb" DEFAULT '[]'::"jsonb" NOT NULL,
+    "import_record_id" bigint,
+    "imported_at" timestamp with time zone,
+    "imported_by" "uuid",
+    "imported_by_name" "text"
 );
 
 ALTER TABLE "public"."progress_note" OWNER TO "postgres";
@@ -1107,8 +1188,8 @@ CREATE TABLE IF NOT EXISTS "public"."reminder" (
     "completed_by" "uuid",
     "completed_by_name" "text",
     "case_id" bigint,
-    "start_date" "date" NOT NULL,
     "end_date" "date" NOT NULL,
+    "start_date" "date" NOT NULL,
     CONSTRAINT "end_date_check" CHECK (("end_date" >= "start_date"))
 );
 
@@ -1136,7 +1217,6 @@ CREATE TABLE IF NOT EXISTS "public"."session" (
     "end_date" timestamp with time zone NOT NULL,
     "recurrence_rule" "text" DEFAULT ''::"text" NOT NULL,
     "time_frame" character(1) DEFAULT ''::"bpchar" NOT NULL,
-    "time_frame_until" timestamp with time zone,
     "mode" character(1) DEFAULT ''::"bpchar" NOT NULL,
     "learning" character(1) DEFAULT ''::"bpchar" NOT NULL,
     "seb" character(1) DEFAULT ''::"bpchar" NOT NULL,
@@ -1148,6 +1228,7 @@ CREATE TABLE IF NOT EXISTS "public"."session" (
     "parent_session_note" "text",
     "recurrence_parent" bigint,
     "recurrence_start_date" timestamp with time zone,
+    "time_frame_until" timestamp with time zone,
     "collaborators" "text" DEFAULT ''::"text" NOT NULL
 );
 
@@ -1175,7 +1256,8 @@ CREATE TABLE IF NOT EXISTS "public"."team_member" (
     "email" "text",
     "last_sign_in_at" timestamp with time zone,
     "service" boolean DEFAULT false NOT NULL,
-    "banned" boolean DEFAULT false NOT NULL
+    "banned" boolean DEFAULT false NOT NULL,
+    "managed_grades" "public"."grade_enum"[] DEFAULT '{}'::"public"."grade_enum"[] NOT NULL
 );
 
 ALTER TABLE "public"."team_member" OWNER TO "postgres";
@@ -1198,6 +1280,60 @@ CREATE OR REPLACE VIEW "public"."case_oplog" AS
 
 ALTER TABLE "public"."case_oplog" OWNER TO "postgres";
 
+CREATE TABLE IF NOT EXISTS "public"."legacy_progress_note" (
+    "id" bigint NOT NULL,
+    "case_id" bigint NOT NULL,
+    "row_id" integer NOT NULL,
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "entered_at" "text" NOT NULL,
+    "entered_by" "text" NOT NULL,
+    "content" "text" NOT NULL,
+    "status" "text" DEFAULT 'Draft'::"text" NOT NULL,
+    "entered_at_date" timestamp with time zone,
+    "entered_by_uuid" "uuid",
+    "tags" "text"[] DEFAULT '{}'::"text"[] NOT NULL,
+    "accepted_at" timestamp with time zone,
+    "accepted_by" "uuid",
+    "accepted_by_name" "text"
+);
+
+ALTER TABLE "public"."legacy_progress_note" OWNER TO "postgres";
+
+ALTER TABLE "public"."legacy_progress_note" ALTER COLUMN "id" ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME "public"."legacy_progress_note_id_seq"
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+CREATE TABLE IF NOT EXISTS "public"."legacy_progress_note_job" (
+    "id" bigint NOT NULL,
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "created_by" "uuid",
+    "started_at" timestamp with time zone,
+    "finished_at" timestamp with time zone,
+    "status" "text" DEFAULT 'Ready'::"text" NOT NULL,
+    "message" "text" DEFAULT ''::"text" NOT NULL,
+    "case_id" bigint NOT NULL,
+    "filepath" "text" DEFAULT ''::"text" NOT NULL,
+    "xml" "text" DEFAULT ''::"text" NOT NULL,
+    "item_total" bigint DEFAULT '0'::bigint NOT NULL,
+    "dryrun" boolean NOT NULL
+);
+
+ALTER TABLE "public"."legacy_progress_note_job" OWNER TO "postgres";
+
+ALTER TABLE "public"."legacy_progress_note_job" ALTER COLUMN "id" ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME "public"."legacy_progress_note_job_id_seq"
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
 CREATE OR REPLACE VIEW "public"."my_case" AS
  SELECT "a"."id",
     "a"."created_at",
@@ -1215,6 +1351,7 @@ CREATE OR REPLACE VIEW "public"."my_case" AS
     "a"."created_by",
     "a"."created_by_name",
     "a"."tier",
+    "a"."core_needs",
     "a"."last_session_at",
     "a"."next_session_at",
     "a"."last_session_by",
@@ -1433,6 +1570,56 @@ CREATE TABLE IF NOT EXISTS "public"."role_permission" (
 
 ALTER TABLE "public"."role_permission" OWNER TO "postgres";
 
+CREATE TABLE IF NOT EXISTS "public"."rollover_job" (
+    "id" bigint NOT NULL,
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "created_by" "uuid" NOT NULL,
+    "created_by_name" "text" DEFAULT ''::"text" NOT NULL,
+    "started_at" timestamp with time zone,
+    "finished_at" timestamp with time zone,
+    "item_total" bigint DEFAULT '0'::bigint NOT NULL,
+    "item_not_done" integer DEFAULT 0 NOT NULL,
+    "item_done_ok" integer DEFAULT 0 NOT NULL,
+    "item_done_error" integer DEFAULT 0 NOT NULL,
+    "status" "text" DEFAULT 'Ready'::"text" NOT NULL
+);
+
+ALTER TABLE "public"."rollover_job" OWNER TO "postgres";
+
+ALTER TABLE "public"."rollover_job" ALTER COLUMN "id" ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME "public"."rollover_job_id_seq"
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+CREATE TABLE IF NOT EXISTS "public"."rollover_job_item" (
+    "id" bigint NOT NULL,
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "job_id" bigint NOT NULL,
+    "case_id" bigint NOT NULL,
+    "case_status" "text" DEFAULT ''::"text" NOT NULL,
+    "started_at" timestamp with time zone,
+    "finished_at" timestamp with time zone,
+    "done_ok" boolean,
+    "message" "text",
+    "student_name" "text" DEFAULT ''::"text" NOT NULL,
+    "student_no" "text" DEFAULT ''::"text" NOT NULL
+);
+
+ALTER TABLE "public"."rollover_job_item" OWNER TO "postgres";
+
+ALTER TABLE "public"."rollover_job_item" ALTER COLUMN "id" ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME "public"."rollover_job_item_id_seq"
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
 CREATE TABLE IF NOT EXISTS "public"."safeguarding_note" (
     "id" bigint NOT NULL,
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
@@ -1544,6 +1731,12 @@ ALTER TABLE ONLY "public"."case_handler"
 ALTER TABLE ONLY "public"."case"
     ADD CONSTRAINT "case_pkey" PRIMARY KEY ("id");
 
+ALTER TABLE ONLY "public"."legacy_progress_note_job"
+    ADD CONSTRAINT "legacy_progress_note_job_pkey" PRIMARY KEY ("id");
+
+ALTER TABLE ONLY "public"."legacy_progress_note"
+    ADD CONSTRAINT "legacy_progress_note_pkey" PRIMARY KEY ("id");
+
 ALTER TABLE ONLY "public"."page"
     ADD CONSTRAINT "page_pkey" PRIMARY KEY ("id");
 
@@ -1564,6 +1757,12 @@ ALTER TABLE ONLY "public"."reminder"
 
 ALTER TABLE ONLY "public"."role_permission"
     ADD CONSTRAINT "role_permission_pkey" PRIMARY KEY ("role", "permission");
+
+ALTER TABLE ONLY "public"."rollover_job_item"
+    ADD CONSTRAINT "rollover_job_item_pkey" PRIMARY KEY ("id");
+
+ALTER TABLE ONLY "public"."rollover_job"
+    ADD CONSTRAINT "rollover_job_pkey" PRIMARY KEY ("id");
 
 ALTER TABLE ONLY "public"."safeguarding_note"
     ADD CONSTRAINT "safeguarding_note_pkey" PRIMARY KEY ("id");
@@ -1727,6 +1926,33 @@ ALTER TABLE ONLY "public"."case_gls"
 ALTER TABLE ONLY "public"."case_gls"
     ADD CONSTRAINT "public_case_gls_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "auth"."users"("id") ON DELETE CASCADE;
 
+ALTER TABLE ONLY "public"."legacy_progress_note"
+    ADD CONSTRAINT "public_legacy_progress_note_case_id_fkey" FOREIGN KEY ("case_id") REFERENCES "public"."case"("id") ON DELETE CASCADE;
+
+ALTER TABLE ONLY "public"."legacy_progress_note"
+    ADD CONSTRAINT "public_legacy_progress_note_entered_by_uuid_fkey" FOREIGN KEY ("entered_by_uuid") REFERENCES "public"."team_member"("id") ON DELETE CASCADE;
+
+ALTER TABLE ONLY "public"."legacy_progress_note_job"
+    ADD CONSTRAINT "public_legacy_progress_note_job_case_id_fkey" FOREIGN KEY ("case_id") REFERENCES "public"."case"("id") ON UPDATE CASCADE ON DELETE CASCADE;
+
+ALTER TABLE ONLY "public"."legacy_progress_note_job"
+    ADD CONSTRAINT "public_legacy_progress_note_job_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES "auth"."users"("id") ON UPDATE CASCADE ON DELETE CASCADE;
+
+ALTER TABLE ONLY "public"."progress_note"
+    ADD CONSTRAINT "public_progress_note_import_record_id_fkey" FOREIGN KEY ("import_record_id") REFERENCES "public"."legacy_progress_note"("id") ON DELETE CASCADE;
+
+ALTER TABLE ONLY "public"."progress_note"
+    ADD CONSTRAINT "public_progress_note_imported_by_fkey" FOREIGN KEY ("imported_by") REFERENCES "auth"."users"("id");
+
+ALTER TABLE ONLY "public"."rollover_job"
+    ADD CONSTRAINT "public_rollover_job_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES "auth"."users"("id");
+
+ALTER TABLE ONLY "public"."rollover_job_item"
+    ADD CONSTRAINT "public_rollover_job_item_case_id_fkey" FOREIGN KEY ("case_id") REFERENCES "public"."case"("id") ON UPDATE CASCADE ON DELETE CASCADE;
+
+ALTER TABLE ONLY "public"."rollover_job_item"
+    ADD CONSTRAINT "public_rollover_job_item_job_id_fkey" FOREIGN KEY ("job_id") REFERENCES "public"."rollover_job"("id") ON UPDATE CASCADE ON DELETE CASCADE;
+
 ALTER TABLE ONLY "public"."session_collaborator"
     ADD CONSTRAINT "public_session_collaborator_session_id_fkey" FOREIGN KEY ("session_id") REFERENCES "public"."session"("id") ON DELETE CASCADE;
 
@@ -1796,6 +2022,8 @@ ALTER TABLE "audit"."record_version" ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Disable delete" ON "public"."case" FOR DELETE USING (false);
 
+CREATE POLICY "Enable all for all users" ON "public"."legacy_progress_note" TO "authenticated" USING (true);
+
 CREATE POLICY "Enable all operations for authenticated users" ON "public"."progress_note_attachment" TO "authenticated" USING (true) WITH CHECK (true);
 
 CREATE POLICY "Enable delete for allowed roles" ON "public"."case_gls" FOR DELETE TO "authenticated" USING ("public"."is_allowed"('case_handler:delete'::"public"."permission_enum"));
@@ -1819,6 +2047,8 @@ CREATE POLICY "Enable delete for creator and allowed roles" ON "public"."session
 CREATE POLICY "Enable delete for creator and allowed roles" ON "public"."specialist" FOR DELETE TO "authenticated" USING (("public"."is_creator"("created_by") OR "public"."is_allowed"('specialist:delete'::"public"."permission_enum")));
 
 CREATE POLICY "Enable delete for creator and allowed roles" ON "public"."target" FOR DELETE TO "authenticated" USING (("public"."is_creator"("created_by") OR "public"."is_allowed"('target:delete'::"public"."permission_enum")));
+
+CREATE POLICY "Enable insert for all users" ON "public"."legacy_progress_note_job" FOR INSERT TO "authenticated" WITH CHECK (true);
 
 CREATE POLICY "Enable insert for allowed roles" ON "public"."case" FOR INSERT TO "authenticated" WITH CHECK ("public"."is_allowed"('case:create'::"public"."permission_enum"));
 
@@ -1848,7 +2078,11 @@ CREATE POLICY "Enable insert for service_role" ON "public"."team_member" FOR INS
 
 CREATE POLICY "Enable read access for authenticated" ON "public"."role_permission" FOR SELECT TO "authenticated" USING (true);
 
-CREATE POLICY "Enable select for all users" ON "public"."case" FOR SELECT TO "authenticated" USING (true);
+CREATE POLICY "Enable select for all users" ON "public"."case" FOR SELECT TO "authenticated" USING (
+CASE
+    WHEN "public"."should_apply_grade_filter"() THEN ("grade" = ANY ("public"."get_managed_grades"()))
+    ELSE true
+END);
 
 CREATE POLICY "Enable select for all users" ON "public"."case_gls" FOR SELECT TO "authenticated" USING (true);
 
@@ -1859,6 +2093,10 @@ CREATE POLICY "Enable select for all users" ON "public"."page" FOR SELECT TO "au
 CREATE POLICY "Enable select for all users" ON "public"."progress_note" FOR SELECT TO "authenticated" USING (true);
 
 CREATE POLICY "Enable select for all users" ON "public"."reminder" FOR SELECT TO "authenticated" USING (true);
+
+CREATE POLICY "Enable select for all users" ON "public"."rollover_job" FOR SELECT TO "authenticated" USING ("public"."is_allowed"('rollover_job:list'::"public"."permission_enum"));
+
+CREATE POLICY "Enable select for all users" ON "public"."rollover_job_item" FOR SELECT TO "authenticated" USING ("public"."is_allowed"('rollover_job:list'::"public"."permission_enum"));
 
 CREATE POLICY "Enable select for all users" ON "public"."session" FOR SELECT TO "authenticated" USING (true);
 
@@ -1881,6 +2119,8 @@ CASE
 END);
 
 CREATE POLICY "Enable supabase_auth_admin to read user roles" ON "public"."team_member" FOR SELECT TO "supabase_auth_admin" USING (true);
+
+CREATE POLICY "Enable update for all users" ON "public"."legacy_progress_note_job" FOR UPDATE TO "authenticated" USING (true);
 
 CREATE POLICY "Enable update for allowed roles" ON "public"."case_gls" FOR UPDATE TO "authenticated" USING (true) WITH CHECK ("public"."is_allowed"('case_handler:edit'::"public"."permission_enum"));
 
@@ -1914,6 +2154,10 @@ ALTER TABLE "public"."case_gls" ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE "public"."case_handler" ENABLE ROW LEVEL SECURITY;
 
+ALTER TABLE "public"."legacy_progress_note" ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE "public"."legacy_progress_note_job" ENABLE ROW LEVEL SECURITY;
+
 ALTER TABLE "public"."page" ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE "public"."pending_member" ENABLE ROW LEVEL SECURITY;
@@ -1927,6 +2171,10 @@ ALTER TABLE "public"."remark" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "public"."reminder" ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE "public"."role_permission" ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE "public"."rollover_job" ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE "public"."rollover_job_item" ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE "public"."safeguarding_note" ENABLE ROW LEVEL SECURITY;
 
@@ -1944,7 +2192,14 @@ GRANT USAGE ON SCHEMA "public" TO "postgres";
 GRANT USAGE ON SCHEMA "public" TO "anon";
 GRANT USAGE ON SCHEMA "public" TO "authenticated";
 GRANT USAGE ON SCHEMA "public" TO "service_role";
-GRANT USAGE ON SCHEMA "public" TO "supabase_auth_admin";
+
+GRANT ALL ON FUNCTION "public"."accept_legacy_progress_note"("p_id" bigint) TO "anon";
+GRANT ALL ON FUNCTION "public"."accept_legacy_progress_note"("p_id" bigint) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."accept_legacy_progress_note"("p_id" bigint) TO "service_role";
+
+GRANT ALL ON FUNCTION "public"."add_table_to_publication_if_not_exists"("schema_name" "text", "table_name" "text", "publication_name" "text") TO "anon";
+GRANT ALL ON FUNCTION "public"."add_table_to_publication_if_not_exists"("schema_name" "text", "table_name" "text", "publication_name" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."add_table_to_publication_if_not_exists"("schema_name" "text", "table_name" "text", "publication_name" "text") TO "service_role";
 
 GRANT ALL ON FUNCTION "public"."ban_user"("p_user_id" "uuid") TO "anon";
 GRANT ALL ON FUNCTION "public"."ban_user"("p_user_id" "uuid") TO "authenticated";
@@ -1969,6 +2224,11 @@ GRANT ALL ON FUNCTION "public"."get_case_handler_details"("p_case_id" bigint) TO
 GRANT ALL ON FUNCTION "public"."get_cases_by_handler"("p_user_id" "uuid") TO "anon";
 GRANT ALL ON FUNCTION "public"."get_cases_by_handler"("p_user_id" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."get_cases_by_handler"("p_user_id" "uuid") TO "service_role";
+
+GRANT ALL ON FUNCTION "public"."get_managed_grades"() TO "postgres";
+GRANT ALL ON FUNCTION "public"."get_managed_grades"() TO "anon";
+GRANT ALL ON FUNCTION "public"."get_managed_grades"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."get_managed_grades"() TO "service_role";
 
 GRANT ALL ON FUNCTION "public"."get_name"() TO "anon";
 GRANT ALL ON FUNCTION "public"."get_name"() TO "authenticated";
@@ -2013,6 +2273,11 @@ GRANT ALL ON FUNCTION "public"."set_main_handler"("p_case_id" bigint, "p_user_id
 GRANT ALL ON FUNCTION "public"."set_not_null_default_empty_string"("column_name" "text", "table_name" "text") TO "anon";
 GRANT ALL ON FUNCTION "public"."set_not_null_default_empty_string"("column_name" "text", "table_name" "text") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."set_not_null_default_empty_string"("column_name" "text", "table_name" "text") TO "service_role";
+
+GRANT ALL ON FUNCTION "public"."should_apply_grade_filter"() TO "postgres";
+GRANT ALL ON FUNCTION "public"."should_apply_grade_filter"() TO "anon";
+GRANT ALL ON FUNCTION "public"."should_apply_grade_filter"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."should_apply_grade_filter"() TO "service_role";
 
 GRANT ALL ON FUNCTION "public"."team_member_i_u_from_sso"() TO "anon";
 GRANT ALL ON FUNCTION "public"."team_member_i_u_from_sso"() TO "authenticated";
@@ -2102,14 +2367,30 @@ GRANT ALL ON TABLE "public"."target" TO "anon";
 GRANT ALL ON TABLE "public"."target" TO "authenticated";
 GRANT ALL ON TABLE "public"."target" TO "service_role";
 
+GRANT ALL ON TABLE "public"."team_member" TO "anon";
+GRANT ALL ON TABLE "public"."team_member" TO "authenticated";
 GRANT ALL ON TABLE "public"."team_member" TO "service_role";
 GRANT ALL ON TABLE "public"."team_member" TO "supabase_auth_admin";
-GRANT ALL ON TABLE "public"."team_member" TO "authenticated";
-GRANT ALL ON TABLE "public"."team_member" TO "anon";
 
 GRANT ALL ON TABLE "public"."case_oplog" TO "anon";
 GRANT ALL ON TABLE "public"."case_oplog" TO "authenticated";
 GRANT ALL ON TABLE "public"."case_oplog" TO "service_role";
+
+GRANT ALL ON TABLE "public"."legacy_progress_note" TO "anon";
+GRANT ALL ON TABLE "public"."legacy_progress_note" TO "authenticated";
+GRANT ALL ON TABLE "public"."legacy_progress_note" TO "service_role";
+
+GRANT ALL ON SEQUENCE "public"."legacy_progress_note_id_seq" TO "anon";
+GRANT ALL ON SEQUENCE "public"."legacy_progress_note_id_seq" TO "authenticated";
+GRANT ALL ON SEQUENCE "public"."legacy_progress_note_id_seq" TO "service_role";
+
+GRANT ALL ON TABLE "public"."legacy_progress_note_job" TO "anon";
+GRANT ALL ON TABLE "public"."legacy_progress_note_job" TO "authenticated";
+GRANT ALL ON TABLE "public"."legacy_progress_note_job" TO "service_role";
+
+GRANT ALL ON SEQUENCE "public"."legacy_progress_note_job_id_seq" TO "anon";
+GRANT ALL ON SEQUENCE "public"."legacy_progress_note_job_id_seq" TO "authenticated";
+GRANT ALL ON SEQUENCE "public"."legacy_progress_note_job_id_seq" TO "service_role";
 
 GRANT ALL ON TABLE "public"."my_case" TO "anon";
 GRANT ALL ON TABLE "public"."my_case" TO "authenticated";
@@ -2170,6 +2451,22 @@ GRANT ALL ON SEQUENCE "public"."reminder_id_seq" TO "service_role";
 GRANT ALL ON TABLE "public"."role_permission" TO "anon";
 GRANT ALL ON TABLE "public"."role_permission" TO "authenticated";
 GRANT ALL ON TABLE "public"."role_permission" TO "service_role";
+
+GRANT ALL ON TABLE "public"."rollover_job" TO "anon";
+GRANT ALL ON TABLE "public"."rollover_job" TO "authenticated";
+GRANT ALL ON TABLE "public"."rollover_job" TO "service_role";
+
+GRANT ALL ON SEQUENCE "public"."rollover_job_id_seq" TO "anon";
+GRANT ALL ON SEQUENCE "public"."rollover_job_id_seq" TO "authenticated";
+GRANT ALL ON SEQUENCE "public"."rollover_job_id_seq" TO "service_role";
+
+GRANT ALL ON TABLE "public"."rollover_job_item" TO "anon";
+GRANT ALL ON TABLE "public"."rollover_job_item" TO "authenticated";
+GRANT ALL ON TABLE "public"."rollover_job_item" TO "service_role";
+
+GRANT ALL ON SEQUENCE "public"."rollover_job_item_id_seq" TO "anon";
+GRANT ALL ON SEQUENCE "public"."rollover_job_item_id_seq" TO "authenticated";
+GRANT ALL ON SEQUENCE "public"."rollover_job_item_id_seq" TO "service_role";
 
 GRANT ALL ON TABLE "public"."safeguarding_note" TO "anon";
 GRANT ALL ON TABLE "public"."safeguarding_note" TO "authenticated";
