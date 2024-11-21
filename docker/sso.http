@@ -13,6 +13,16 @@ APIKey: {{SERVICE_KEY}}
 Authorization: Bearer {{SERVICE_KEY}}
 
 ### List IdPs
+POST {{BASE_URL}}/auth/v1/sso
+APIKey: {{SERVICE_KEY}}
+Authorization: Bearer {{SERVICE_KEY}}
+
+{
+  "domain": "auth0.com",
+  "skip_http_redirect": true
+}
+
+### List IdPs
 GET {{BASE_URL}}/auth/v1/admin/sso/providers
 APIKey: {{SERVICE_KEY}}
 Authorization: Bearer {{SERVICE_KEY}}
