@@ -501,29 +501,30 @@ ALTER FUNCTION "public"."ban_user"("p_user_id" "uuid") OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."custom_access_token_hook"("_event" "jsonb") RETURNS "jsonb"
-    LANGUAGE "plpgsql"
+    LANGUAGE "plpgsql" STABLE
     AS $$
   declare
-    claims jsonb;
-    user_role "public"."role_enum";
+    _claims jsonb;
+    _user_role "public"."role_enum";
+
   begin
     -- Get the user's role, first from team_member, then from pending_member
     select COALESCE(
       (select role from "public"."team_member" where id = (_event->>'user_id')::uuid),
       (select role from "public"."pending_member" where id = _event->'claims'->>'email')
-    ) into user_role;
+    ) into _user_role;
 
-    claims := _event->'claims';
+    _claims := _event->'claims';
 
-    if user_role is not null then
+    if _user_role is not null then
       -- Set the claim
-      claims := jsonb_set(claims, '{user_role}', to_jsonb(user_role));
+      _claims := jsonb_set(_claims, '{user_role}', to_jsonb(_user_role));
     else
-      claims := jsonb_set(claims, '{user_role}', 'null');
+      _claims := jsonb_set(_claims, '{user_role}', 'null');
     end if;
 
     -- Update the 'claims' object in the original event
-    _event := jsonb_set(_event, '{claims}', claims);
+    _event := jsonb_set(_event, '{claims}', _claims);
 
     -- Return the modified or original event
     return _event;
@@ -531,7 +532,7 @@ CREATE OR REPLACE FUNCTION "public"."custom_access_token_hook"("_event" "jsonb")
 $$;
 
 
-ALTER FUNCTION "public"."custom_access_token_hook"("_event" "jsonb") OWNER TO "postgres";
+ALTER FUNCTION "public"."custom_access_token_hook"("_event" "jsonb") OWNER TO "supabase_admin";
 
 
 CREATE OR REPLACE FUNCTION "public"."find_next_upcoming_session"("p_case_id" bigint) RETURNS timestamp with time zone
@@ -802,7 +803,7 @@ CREATE OR REPLACE FUNCTION "public"."should_apply_grade_filter"() RETURNS boolea
     LANGUAGE "plpgsql"
     AS $$
 BEGIN
-  RETURN (auth.jwt() ->> 'user_role') = 'GLL';
+  RETURN (auth.jwt() ->> 'user_role') IN ('GLL', 'Li Ren GLS');
 END;
 $$;
 
@@ -2252,11 +2253,6 @@ ALTER TABLE ONLY "public"."case"
 
 
 
-ALTER TABLE ONLY "public"."legacy_progress_note"
-    ADD CONSTRAINT "legacy_progress_note_entered_by_uuid_fkey" FOREIGN KEY ("entered_by_uuid") REFERENCES "auth"."users"("id") ON UPDATE CASCADE ON DELETE CASCADE;
-
-
-
 ALTER TABLE ONLY "public"."page"
     ADD CONSTRAINT "page_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES "auth"."users"("id") ON UPDATE CASCADE ON DELETE CASCADE;
 
@@ -2304,6 +2300,11 @@ ALTER TABLE ONLY "public"."case_gls"
 
 ALTER TABLE ONLY "public"."legacy_progress_note"
     ADD CONSTRAINT "public_legacy_progress_note_case_id_fkey" FOREIGN KEY ("case_id") REFERENCES "public"."case"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."legacy_progress_note"
+    ADD CONSTRAINT "public_legacy_progress_note_entered_by_uuid_fkey" FOREIGN KEY ("entered_by_uuid") REFERENCES "public"."team_member"("id") ON UPDATE CASCADE ON DELETE CASCADE;
 
 
 
@@ -2774,6 +2775,7 @@ GRANT USAGE ON SCHEMA "public" TO "postgres";
 GRANT USAGE ON SCHEMA "public" TO "anon";
 GRANT USAGE ON SCHEMA "public" TO "authenticated";
 GRANT USAGE ON SCHEMA "public" TO "service_role";
+GRANT USAGE ON SCHEMA "public" TO "supabase_auth_admin";
 
 
 
@@ -2795,9 +2797,11 @@ GRANT ALL ON FUNCTION "public"."ban_user"("p_user_id" "uuid") TO "service_role";
 
 
 
+GRANT ALL ON FUNCTION "public"."custom_access_token_hook"("_event" "jsonb") TO "postgres";
 GRANT ALL ON FUNCTION "public"."custom_access_token_hook"("_event" "jsonb") TO "anon";
 GRANT ALL ON FUNCTION "public"."custom_access_token_hook"("_event" "jsonb") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."custom_access_token_hook"("_event" "jsonb") TO "service_role";
+GRANT ALL ON FUNCTION "public"."custom_access_token_hook"("_event" "jsonb") TO "supabase_auth_admin";
 
 
 
