@@ -23,7 +23,7 @@ WHERE
       FROM
         case_handler
       WHERE
-        case_handler.user_id = uid ()
+        case_handler.user_id = auth.uid ()
     )
   )
   OR (
@@ -33,7 +33,7 @@ WHERE
       FROM
         case_gls
       WHERE
-        case_gls.user_id = uid ()
+        case_gls.user_id = auth.uid ()
     )
   );
 
@@ -63,7 +63,7 @@ WHERE
       FROM
         case_handler
       WHERE
-        case_handler.user_id = uid ()
+        case_handler.user_id = auth.uid ()
     )
   )
   OR (
@@ -73,6 +73,6 @@ WHERE
       FROM
         case_gls
       WHERE
-        case_gls.user_id = uid ()
+        case_gls.user_id = auth.uid ()
     )
   );
