@@ -1533,9 +1533,12 @@ CREATE OR REPLACE VIEW "public"."my_progress_note" AS
     "a"."content",
     "a"."tags",
     "a"."attachments"
-   FROM ("public"."progress_note" "a"
-     JOIN "public"."case_handler" "b" ON (("a"."case_id" = "b"."case_id")))
-  WHERE ("b"."user_id" = "auth"."uid"());
+   FROM "public"."progress_note" "a"
+  WHERE (("a"."case_id" IN ( SELECT "case_handler"."case_id"
+           FROM "public"."case_handler"
+          WHERE ("case_handler"."user_id" = "auth"."uid"()))) OR ("a"."case_id" IN ( SELECT "case_gls"."case_id"
+           FROM "public"."case_gls"
+          WHERE ("case_gls"."user_id" = "auth"."uid"()))));
 
 
 ALTER TABLE "public"."my_progress_note" OWNER TO "postgres";
@@ -1554,9 +1557,12 @@ CREATE OR REPLACE VIEW "public"."my_reminder" AS
     "a"."due_date",
     "a"."start_date",
     "a"."end_date"
-   FROM ("public"."reminder" "a"
-     JOIN "public"."case_handler" "b" ON (("a"."case_id" = "b"."case_id")))
-  WHERE ("b"."user_id" = "auth"."uid"());
+   FROM "public"."reminder" "a"
+  WHERE (("a"."case_id" IN ( SELECT "case_handler"."case_id"
+           FROM "public"."case_handler"
+          WHERE ("case_handler"."user_id" = "auth"."uid"()))) OR ("a"."case_id" IN ( SELECT "case_gls"."case_id"
+           FROM "public"."case_gls"
+          WHERE ("case_gls"."user_id" = "auth"."uid"()))));
 
 
 ALTER TABLE "public"."my_reminder" OWNER TO "postgres";
@@ -2602,11 +2608,7 @@ CREATE POLICY "Enable read access for authenticated" ON "public"."role_permissio
 
 
 
-CREATE POLICY "Enable select for all users" ON "public"."case" FOR SELECT TO "authenticated" USING (
-CASE
-    WHEN "public"."should_apply_grade_filter"() THEN ("grade" = ANY ("public"."get_managed_grades"()))
-    ELSE true
-END);
+CREATE POLICY "Enable select for all users" ON "public"."case" FOR SELECT TO "authenticated" USING (true);
 
 
 
