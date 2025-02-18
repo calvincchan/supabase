@@ -30,12 +30,12 @@ SET
   );
 
 -- Drop the session_collaborator table
-DROP TRIGGER IF EXISTS "session_collaborator_i_u_d" ON "public"."session_collaborator";
+DROP TRIGGER "session_collaborator_i_u_d" ON "public"."session_collaborator";
 
-DROP FUNCTION IF EXISTS "trigger_set_session_collaborators";
+DROP FUNCTION "trigger_set_session_collaborators";
 
 -- Drop the view my_session
-DROP VIEW IF EXISTS "public"."my_session";
+DROP VIEW "public"."my_session";
 
 -- Drop the table session_collaborator
 DROP TABLE "public"."session_collaborator";
