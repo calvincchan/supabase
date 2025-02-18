@@ -34,4 +34,8 @@ DROP TRIGGER IF EXISTS "session_collaborator_i_u_d" ON "public"."session_collabo
 
 DROP FUNCTION IF EXISTS "trigger_set_session_collaborators";
 
+-- Drop the view my_session
+DROP VIEW IF EXISTS "public"."my_session";
+
+-- Drop the table session_collaborator
 DROP TABLE "public"."session_collaborator";
