@@ -8,6 +8,7 @@ WHERE
 
 DROP POLICY "Enable select for all users" ON "public"."case";
 
+-- fix case list permission
 CREATE POLICY "Enable select for allowed roles" ON "public"."case" FOR
 SELECT
   TO "authenticated" USING (is_allowed ('case:list'::permission_enum));
