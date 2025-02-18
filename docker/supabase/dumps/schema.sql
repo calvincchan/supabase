@@ -668,20 +668,6 @@ $$;
 ALTER FUNCTION "public"."get_session_collaborator_details"("p_session_id" bigint) OWNER TO "postgres";
 
 
-CREATE OR REPLACE FUNCTION "public"."insert_session_collaborator"() RETURNS "trigger"
-    LANGUAGE "plpgsql"
-    AS $$
-BEGIN
-  INSERT INTO "public"."session_collaborator" ("session_id", "user_id")
-  VALUES (NEW.id, NEW.created_by);
-  RETURN NEW;
-END;
-$$;
-
-
-ALTER FUNCTION "public"."insert_session_collaborator"() OWNER TO "postgres";
-
-
 CREATE OR REPLACE FUNCTION "public"."insert_user"() RETURNS "trigger"
     LANGUAGE "plpgsql" SECURITY DEFINER
     AS $$
@@ -742,6 +728,58 @@ $$;
 
 
 ALTER FUNCTION "public"."is_creator"("created_by" "uuid") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."process_session"() RETURNS "trigger"
+    LANGUAGE "plpgsql"
+    AS $$
+DECLARE
+  p_collaborators TEXT;
+  p_session_id BIGINT;
+  p_users UUID[];
+BEGIN
+  p_session_id := NEW.id;
+
+  -- on insert, set collaborator_users to created_by
+  IF TG_OP = 'INSERT' THEN
+    NEW.collaborator_users := ARRAY[auth.uid()];
+  END IF;
+
+  --- On update:
+  --- 1. set session started_at, started_by, started_by_name
+  --- 2. set case last_session_at, last_session_by, last_session_by_name
+  IF TG_OP = 'UPDATE' THEN
+    IF OLD.status = 'U' AND (NEW.status = 'I' OR NEW.status = 'X') THEN
+      UPDATE "case" SET last_session_at = NOW(), last_session_by = auth.uid(), last_session_by_name = get_name() WHERE id = NEW.case_id;
+      NEW.started_at = NOW();
+      NEW.started_by = auth.uid();
+      SELECT get_name() INTO NEW.started_by_name;
+    END IF;
+    IF (OLD.status = 'U' OR OLD.status = 'I') AND NEW.status = 'X' THEN
+      UPDATE "case" SET last_session_at = NOW(), last_session_by = auth.uid(), last_session_by_name = get_name() WHERE id = NEW.case_id;
+      NEW.completed_at = NOW();
+      NEW.completed_by = auth.uid();
+      SELECT get_name() INTO NEW.completed_by_name;
+    END IF;
+  END IF;
+
+  -- On insert and update: set session.collaborators
+  If TG_OP = 'INSERT' OR TG_OP = 'UPDATE' THEN
+    p_users := NEW.collaborator_users;
+    --- find the name of all users from team_member table where id is in p_users array
+    SELECT STRING_AGG(name, '|' ORDER BY name ASC) INTO p_collaborators
+    FROM team_member
+    WHERE id = ANY(p_users);
+    --- Set session.collaborators with the new value of p_collaborators
+    NEW.collaborators := COALESCE(p_collaborators, '');
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."process_session"() OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."set_completed_meta"() RETURNS "trigger"
@@ -851,30 +889,6 @@ $$;
 
 
 ALTER FUNCTION "public"."team_member_i_u_from_sso"() OWNER TO "postgres";
-
-
-CREATE OR REPLACE FUNCTION "public"."trigger_on_session_status"() RETURNS "trigger"
-    LANGUAGE "plpgsql" SECURITY DEFINER
-    AS $$
-BEGIN
-  IF OLD.status = 'U' AND (NEW.status = 'I' OR NEW.status = 'X') THEN
-    UPDATE "case" SET last_session_at = NOW(), last_session_by = auth.uid(), last_session_by_name = get_name() WHERE id = NEW.case_id;
-    NEW.started_at = NOW();
-    NEW.started_by = auth.uid();
-    SELECT get_name() INTO NEW.started_by_name;
-  END IF;
-  IF (OLD.status = 'U' OR OLD.status = 'I') AND NEW.status = 'X' THEN
-    UPDATE "case" SET last_session_at = NOW(), last_session_by = auth.uid(), last_session_by_name = get_name() WHERE id = NEW.case_id;
-    NEW.completed_at = NOW();
-    NEW.completed_by = auth.uid();
-    SELECT get_name() INTO NEW.completed_by_name;
-  END IF;
-  RETURN NEW;
-END;
-$$;
-
-
-ALTER FUNCTION "public"."trigger_on_session_status"() OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."trigger_set_case_gls"() RETURNS "trigger"
@@ -992,28 +1006,29 @@ END;
 $$;
 
 
-ALTER FUNCTION "public"."trigger_set_next_upcoming_session"() OWNER TO "postgres";
+ALTER FUNCTION "public"."trigger_set_next_upcoming_session"() OWNER TO "supabase_admin";
 
 
 CREATE OR REPLACE FUNCTION "public"."trigger_set_session_collaborator"() RETURNS "trigger"
     LANGUAGE "plpgsql"
     AS $$
 DECLARE
-  collaborator_string TEXT;
+  p_collaborators TEXT;
   p_session_id BIGINT;
+  p_users UUID[];
 BEGIN
-  IF TG_OP = 'DELETE' THEN
-    p_session_id := OLD.session_id;
-  ELSE
-    p_session_id := NEW.session_id;
-  END IF;
+  p_session_id := NEW.id;
 
-  SELECT STRING_AGG(b.name, '|' ORDER BY b.name ASC) INTO collaborator_string
-  FROM session_collaborator AS a
-  JOIN team_member AS b ON a.user_id = b.id
-  WHERE a.session_id = p_session_id;
+  --- select value of collaborator_users from session table where id = p_session_id
+  SELECT collaborator_users INTO p_users FROM session WHERE id = p_session_id;
 
-  UPDATE "session" SET collaborators = COALESCE(collaborator_string, '') WHERE id = p_session_id;
+  --- find the name of all users from team_member table where id is in p_users array
+  SELECT STRING_AGG(name, '|' ORDER BY name ASC) INTO p_collaborators
+  FROM team_member
+  WHERE id = ANY(p_users);
+
+  --- update the session table with the new value of p_collaborators
+  NEW.collaborators := p_collaborators;
 
   RETURN NEW;
 END;
@@ -1359,7 +1374,8 @@ CREATE TABLE IF NOT EXISTS "public"."session" (
     "recurrence_parent" bigint,
     "recurrence_start_date" timestamp with time zone,
     "time_frame_until" timestamp with time zone,
-    "collaborators" "text" DEFAULT ''::"text" NOT NULL
+    "collaborators" "text" DEFAULT ''::"text" NOT NULL,
+    "collaborator_users" "uuid"[] DEFAULT '{}'::"uuid"[] NOT NULL
 );
 
 
@@ -1566,60 +1582,6 @@ CREATE OR REPLACE VIEW "public"."my_reminder" AS
 
 
 ALTER TABLE "public"."my_reminder" OWNER TO "postgres";
-
-
-CREATE TABLE IF NOT EXISTS "public"."session_collaborator" (
-    "session_id" bigint NOT NULL,
-    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
-    "user_id" "uuid" DEFAULT "auth"."uid"() NOT NULL,
-    "created_by" "uuid" DEFAULT "auth"."uid"() NOT NULL
-);
-
-
-ALTER TABLE "public"."session_collaborator" OWNER TO "postgres";
-
-
-CREATE OR REPLACE VIEW "public"."my_session" AS
- SELECT "a"."id",
-    "a"."case_id",
-    "a"."created_at",
-    "a"."created_by",
-    "a"."created_by_name",
-    "a"."updated_at",
-    "a"."updated_by",
-    "a"."updated_by_name",
-    "a"."started_at",
-    "a"."started_by",
-    "a"."started_by_name",
-    "a"."completed_at",
-    "a"."completed_by",
-    "a"."completed_by_name",
-    "a"."content",
-    "a"."language",
-    "a"."status",
-    "a"."collaborators",
-    "a"."start_date",
-    "a"."end_date",
-    "a"."recurrence_rule",
-    "a"."time_frame",
-    "a"."time_frame_until",
-    "a"."mode",
-    "a"."learning",
-    "a"."seb",
-    "a"."counselling",
-    "a"."cca",
-    "a"."haoxue",
-    "a"."non_case",
-    "a"."parent_session",
-    "a"."parent_session_note",
-    "a"."recurrence_parent",
-    "a"."recurrence_start_date"
-   FROM ("public"."session" "a"
-     JOIN "public"."session_collaborator" "b" ON (("a"."id" = "b"."session_id")))
-  WHERE ("b"."user_id" = "auth"."uid"());
-
-
-ALTER TABLE "public"."my_session" OWNER TO "postgres";
 
 
 CREATE TABLE IF NOT EXISTS "public"."page" (
@@ -1860,17 +1822,6 @@ CREATE OR REPLACE VIEW "public"."safeguarding_note_oplog" AS
 ALTER TABLE "public"."safeguarding_note_oplog" OWNER TO "supabase_admin";
 
 
-ALTER TABLE "public"."session_collaborator" ALTER COLUMN "session_id" ADD GENERATED BY DEFAULT AS IDENTITY (
-    SEQUENCE NAME "public"."session_collaborator_session_id_seq"
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1
-);
-
-
-
 ALTER TABLE "public"."session" ALTER COLUMN "id" ADD GENERATED BY DEFAULT AS IDENTITY (
     SEQUENCE NAME "public"."session_id_seq"
     START WITH 1
@@ -2027,11 +1978,6 @@ ALTER TABLE ONLY "public"."rollover_job"
 
 ALTER TABLE ONLY "public"."safeguarding_note"
     ADD CONSTRAINT "safeguarding_note_pkey" PRIMARY KEY ("id");
-
-
-
-ALTER TABLE ONLY "public"."session_collaborator"
-    ADD CONSTRAINT "session_collaborator_pkey" PRIMARY KEY ("session_id", "user_id");
 
 
 
@@ -2208,11 +2154,7 @@ CREATE OR REPLACE TRIGGER "safeguarding_note_set_updated_meta" BEFORE INSERT OR 
 
 
 
-CREATE OR REPLACE TRIGGER "session_collaborator_i_u_d" AFTER INSERT OR DELETE OR UPDATE ON "public"."session_collaborator" FOR EACH ROW EXECUTE FUNCTION "public"."trigger_set_session_collaborator"();
-
-
-
-CREATE OR REPLACE TRIGGER "session_i" AFTER INSERT ON "public"."session" FOR EACH ROW EXECUTE FUNCTION "public"."insert_session_collaborator"();
+CREATE OR REPLACE TRIGGER "session_collaborator_i_u" AFTER INSERT OR UPDATE ON "public"."session" FOR EACH ROW EXECUTE FUNCTION "public"."trigger_set_session_collaborator"();
 
 
 
@@ -2241,10 +2183,6 @@ CREATE OR REPLACE TRIGGER "target_set_updated_meta_on_create" BEFORE INSERT ON "
 
 
 CREATE OR REPLACE TRIGGER "target_set_updated_meta_on_update" BEFORE UPDATE ON "public"."target" FOR EACH ROW EXECUTE FUNCTION "public"."trigger_set_updated_meta"();
-
-
-
-CREATE OR REPLACE TRIGGER "trigger_on_session_status" BEFORE UPDATE ON "public"."session" FOR EACH ROW EXECUTE FUNCTION "public"."trigger_on_session_status"();
 
 
 
@@ -2380,11 +2318,6 @@ ALTER TABLE ONLY "public"."rollover_job_item"
 
 
 
-ALTER TABLE ONLY "public"."session_collaborator"
-    ADD CONSTRAINT "public_session_collaborator_session_id_fkey" FOREIGN KEY ("session_id") REFERENCES "public"."session"("id") ON DELETE CASCADE;
-
-
-
 ALTER TABLE ONLY "public"."target"
     ADD CONSTRAINT "public_target_case_id_fkey" FOREIGN KEY ("case_id") REFERENCES "public"."case"("id") ON DELETE CASCADE;
 
@@ -2427,11 +2360,6 @@ ALTER TABLE ONLY "public"."safeguarding_note"
 
 ALTER TABLE ONLY "public"."session"
     ADD CONSTRAINT "session_case_id_fkey" FOREIGN KEY ("case_id") REFERENCES "public"."case"("id");
-
-
-
-ALTER TABLE ONLY "public"."session_collaborator"
-    ADD CONSTRAINT "session_collaborator_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "auth"."users"("id") ON UPDATE CASCADE ON DELETE CASCADE;
 
 
 
@@ -2536,10 +2464,6 @@ CREATE POLICY "Enable delete for creator and allowed roles" ON "public"."session
 
 
 
-CREATE POLICY "Enable delete for creator and allowed roles" ON "public"."session_collaborator" FOR DELETE TO "authenticated" USING (("public"."is_creator"("created_by") OR "public"."is_allowed"('session:delete'::"public"."permission_enum")));
-
-
-
 CREATE POLICY "Enable delete for creator and allowed roles" ON "public"."specialist" FOR DELETE TO "authenticated" USING (("public"."is_creator"("created_by") OR "public"."is_allowed"('specialist:delete'::"public"."permission_enum")));
 
 
@@ -2588,10 +2512,6 @@ CREATE POLICY "Enable insert for allowed roles" ON "public"."session" FOR INSERT
 
 
 
-CREATE POLICY "Enable insert for allowed roles" ON "public"."session_collaborator" FOR INSERT TO "authenticated" WITH CHECK ("public"."is_allowed"('session:create'::"public"."permission_enum"));
-
-
-
 CREATE POLICY "Enable insert for allowed roles" ON "public"."specialist" FOR INSERT TO "authenticated" WITH CHECK ("public"."is_allowed"('specialist:create'::"public"."permission_enum"));
 
 
@@ -2605,10 +2525,6 @@ CREATE POLICY "Enable insert for service_role" ON "public"."team_member" FOR INS
 
 
 CREATE POLICY "Enable read access for authenticated" ON "public"."role_permission" FOR SELECT TO "authenticated" USING (true);
-
-
-
-CREATE POLICY "Enable select for all users" ON "public"."case" FOR SELECT TO "authenticated" USING (true);
 
 
 
@@ -2644,15 +2560,15 @@ CREATE POLICY "Enable select for all users" ON "public"."session" FOR SELECT TO 
 
 
 
-CREATE POLICY "Enable select for all users" ON "public"."session_collaborator" FOR SELECT TO "authenticated" USING (true);
-
-
-
 CREATE POLICY "Enable select for all users" ON "public"."specialist" FOR SELECT TO "authenticated" USING (true);
 
 
 
 CREATE POLICY "Enable select for all users" ON "public"."target" FOR SELECT TO "authenticated" USING (true);
+
+
+
+CREATE POLICY "Enable select for allowed roles" ON "public"."case" FOR SELECT TO "authenticated" USING ("public"."is_allowed"('case:list'::"public"."permission_enum"));
 
 
 
@@ -2732,10 +2648,6 @@ CREATE POLICY "Enable update for creator and allowed roles" ON "public"."session
 
 
 
-CREATE POLICY "Enable update for creator and allowed roles" ON "public"."session_collaborator" FOR UPDATE TO "authenticated" USING (true) WITH CHECK (("public"."is_creator"("created_by") OR "public"."is_allowed"('session:edit'::"public"."permission_enum")));
-
-
-
 CREATE POLICY "Enable update for creator and allowed roles" ON "public"."specialist" FOR UPDATE TO "authenticated" USING (true) WITH CHECK (("public"."is_creator"("created_by") OR "public"."is_allowed"('specialist:edit'::"public"."permission_enum")));
 
 
@@ -2790,9 +2702,6 @@ ALTER TABLE "public"."safeguarding_note" ENABLE ROW LEVEL SECURITY;
 
 
 ALTER TABLE "public"."session" ENABLE ROW LEVEL SECURITY;
-
-
-ALTER TABLE "public"."session_collaborator" ENABLE ROW LEVEL SECURITY;
 
 
 ALTER TABLE "public"."specialist" ENABLE ROW LEVEL SECURITY;
@@ -2885,12 +2794,6 @@ GRANT ALL ON FUNCTION "public"."get_session_collaborator_details"("p_session_id"
 
 
 
-GRANT ALL ON FUNCTION "public"."insert_session_collaborator"() TO "anon";
-GRANT ALL ON FUNCTION "public"."insert_session_collaborator"() TO "authenticated";
-GRANT ALL ON FUNCTION "public"."insert_session_collaborator"() TO "service_role";
-
-
-
 GRANT ALL ON FUNCTION "public"."insert_user"() TO "anon";
 GRANT ALL ON FUNCTION "public"."insert_user"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."insert_user"() TO "service_role";
@@ -2912,6 +2815,12 @@ GRANT ALL ON FUNCTION "public"."is_case_handler"("p_case_id" bigint) TO "service
 GRANT ALL ON FUNCTION "public"."is_creator"("created_by" "uuid") TO "anon";
 GRANT ALL ON FUNCTION "public"."is_creator"("created_by" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."is_creator"("created_by" "uuid") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."process_session"() TO "anon";
+GRANT ALL ON FUNCTION "public"."process_session"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."process_session"() TO "service_role";
 
 
 
@@ -2945,12 +2854,6 @@ GRANT ALL ON FUNCTION "public"."team_member_i_u_from_sso"() TO "service_role";
 
 
 
-GRANT ALL ON FUNCTION "public"."trigger_on_session_status"() TO "anon";
-GRANT ALL ON FUNCTION "public"."trigger_on_session_status"() TO "authenticated";
-GRANT ALL ON FUNCTION "public"."trigger_on_session_status"() TO "service_role";
-
-
-
 GRANT ALL ON FUNCTION "public"."trigger_set_case_gls"() TO "anon";
 GRANT ALL ON FUNCTION "public"."trigger_set_case_gls"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."trigger_set_case_gls"() TO "service_role";
@@ -2975,6 +2878,7 @@ GRANT ALL ON FUNCTION "public"."trigger_set_main_handler"() TO "service_role";
 
 
 
+GRANT ALL ON FUNCTION "public"."trigger_set_next_upcoming_session"() TO "postgres";
 GRANT ALL ON FUNCTION "public"."trigger_set_next_upcoming_session"() TO "anon";
 GRANT ALL ON FUNCTION "public"."trigger_set_next_upcoming_session"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."trigger_set_next_upcoming_session"() TO "service_role";
@@ -3126,18 +3030,6 @@ GRANT ALL ON TABLE "public"."my_reminder" TO "service_role";
 
 
 
-GRANT ALL ON TABLE "public"."session_collaborator" TO "anon";
-GRANT ALL ON TABLE "public"."session_collaborator" TO "authenticated";
-GRANT ALL ON TABLE "public"."session_collaborator" TO "service_role";
-
-
-
-GRANT ALL ON TABLE "public"."my_session" TO "anon";
-GRANT ALL ON TABLE "public"."my_session" TO "authenticated";
-GRANT ALL ON TABLE "public"."my_session" TO "service_role";
-
-
-
 GRANT ALL ON TABLE "public"."page" TO "anon";
 GRANT ALL ON TABLE "public"."page" TO "authenticated";
 GRANT ALL ON TABLE "public"."page" TO "service_role";
@@ -3239,12 +3131,6 @@ GRANT ALL ON TABLE "public"."safeguarding_note_oplog" TO "postgres";
 GRANT ALL ON TABLE "public"."safeguarding_note_oplog" TO "anon";
 GRANT ALL ON TABLE "public"."safeguarding_note_oplog" TO "authenticated";
 GRANT ALL ON TABLE "public"."safeguarding_note_oplog" TO "service_role";
-
-
-
-GRANT ALL ON SEQUENCE "public"."session_collaborator_session_id_seq" TO "anon";
-GRANT ALL ON SEQUENCE "public"."session_collaborator_session_id_seq" TO "authenticated";
-GRANT ALL ON SEQUENCE "public"."session_collaborator_session_id_seq" TO "service_role";
 
 
 
