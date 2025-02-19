@@ -32,7 +32,7 @@ SET
 -- Drop the session_collaborator table
 DROP TRIGGER "session_collaborator_i_u_d" ON "public"."session_collaborator";
 
-DROP FUNCTION "trigger_set_session_collaborators";
+DROP FUNCTION "trigger_set_session_collaborator";
 
 -- Drop the view my_session
 DROP VIEW "public"."my_session";
