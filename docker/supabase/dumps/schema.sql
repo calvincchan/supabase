@@ -745,9 +745,9 @@ BEGIN
     NEW.collaborator_users := ARRAY[auth.uid()];
   END IF;
 
-  --- On update:
-  --- 1. set session started_at, started_by, started_by_name
-  --- 2. set case last_session_at, last_session_by, last_session_by_name
+  -- On update:
+  -- 1. set session started_at, started_by, started_by_name
+  -- 2. set case last_session_at, last_session_by, last_session_by_name
   IF TG_OP = 'UPDATE' THEN
     IF OLD.status = 'U' AND (NEW.status = 'I' OR NEW.status = 'X') THEN
       UPDATE "case" SET last_session_at = NOW(), last_session_by = auth.uid(), last_session_by_name = get_name() WHERE id = NEW.case_id;
@@ -763,16 +763,14 @@ BEGIN
     END IF;
   END IF;
 
-  -- On insert and update: set session.collaborators
-  If TG_OP = 'INSERT' OR TG_OP = 'UPDATE' THEN
-    p_users := NEW.collaborator_users;
-    --- find the name of all users from team_member table where id is in p_users array
-    SELECT STRING_AGG(name, '|' ORDER BY name ASC) INTO p_collaborators
-    FROM team_member
-    WHERE id = ANY(p_users);
-    --- Set session.collaborators with the new value of p_collaborators
-    NEW.collaborators := COALESCE(p_collaborators, '');
-  END IF;
+  -- cache collaborator names to session.collaborators
+  p_users := NEW.collaborator_users;
+  -- find the name of all users from team_member table where id is in p_users array
+  SELECT STRING_AGG(name, '|' ORDER BY name ASC) INTO p_collaborators
+  FROM team_member
+  WHERE id = ANY(p_users);
+  -- Set session.collaborators with the new value of p_collaborators
+  NEW.collaborators := COALESCE(p_collaborators, '');
 
   RETURN NEW;
 END;
@@ -1007,35 +1005,6 @@ $$;
 
 
 ALTER FUNCTION "public"."trigger_set_next_upcoming_session"() OWNER TO "supabase_admin";
-
-
-CREATE OR REPLACE FUNCTION "public"."trigger_set_session_collaborator"() RETURNS "trigger"
-    LANGUAGE "plpgsql"
-    AS $$
-DECLARE
-  p_collaborators TEXT;
-  p_session_id BIGINT;
-  p_users UUID[];
-BEGIN
-  p_session_id := NEW.id;
-
-  --- select value of collaborator_users from session table where id = p_session_id
-  SELECT collaborator_users INTO p_users FROM session WHERE id = p_session_id;
-
-  --- find the name of all users from team_member table where id is in p_users array
-  SELECT STRING_AGG(name, '|' ORDER BY name ASC) INTO p_collaborators
-  FROM team_member
-  WHERE id = ANY(p_users);
-
-  --- update the session table with the new value of p_collaborators
-  NEW.collaborators := p_collaborators;
-
-  RETURN NEW;
-END;
-$$;
-
-
-ALTER FUNCTION "public"."trigger_set_session_collaborator"() OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."trigger_set_updated_meta"() RETURNS "trigger"
@@ -2154,7 +2123,7 @@ CREATE OR REPLACE TRIGGER "safeguarding_note_set_updated_meta" BEFORE INSERT OR 
 
 
 
-CREATE OR REPLACE TRIGGER "session_collaborator_i_u" AFTER INSERT OR UPDATE ON "public"."session" FOR EACH ROW EXECUTE FUNCTION "public"."trigger_set_session_collaborator"();
+CREATE OR REPLACE TRIGGER "session_i_u" BEFORE INSERT OR UPDATE ON "public"."session" FOR EACH ROW EXECUTE FUNCTION "public"."process_session"();
 
 
 
@@ -2882,12 +2851,6 @@ GRANT ALL ON FUNCTION "public"."trigger_set_next_upcoming_session"() TO "postgre
 GRANT ALL ON FUNCTION "public"."trigger_set_next_upcoming_session"() TO "anon";
 GRANT ALL ON FUNCTION "public"."trigger_set_next_upcoming_session"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."trigger_set_next_upcoming_session"() TO "service_role";
-
-
-
-GRANT ALL ON FUNCTION "public"."trigger_set_session_collaborator"() TO "anon";
-GRANT ALL ON FUNCTION "public"."trigger_set_session_collaborator"() TO "authenticated";
-GRANT ALL ON FUNCTION "public"."trigger_set_session_collaborator"() TO "service_role";
 
 
 
